@@ -171,14 +171,21 @@ class _HomeScreenState extends State<HomeScreen> {
                                     MainAxisAlignment.spaceBetween,
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _buildTodaySection(
+                                  _dashboardSection(
+                                    _buildTodaySection(
                                       todayTasks.take(3).toList(),
-                                      todaySubjects),
+                                      todaySubjects,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
                                   KeyedSubtree(
                                     key: const ValueKey(
                                         'home-left-bottom-section'),
-                                    child: _buildUpcomingSection(
-                                        upcomingTasks.take(3).toList()),
+                                    child: _dashboardSection(
+                                      _buildUpcomingSection(
+                                        upcomingTasks.take(3).toList(),
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -196,9 +203,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                 children: [
                                   _buildWeekStripSection(
                                       tasks, exams, deliverables),
-                                  _buildUpcomingAssessments(
+                                    const SizedBox(height: 5),
+                                  _dashboardSection(
+                                    _buildUpcomingAssessments(
                                       upcomingExams.take(3).toList(),
-                                      upcomingDeliverables.take(3).toList()),
+                                      upcomingDeliverables.take(3).toList(),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 5),
                                   KeyedSubtree(
                                     key: const ValueKey(
                                         'home-right-bottom-section'),
@@ -213,14 +225,18 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     )
                   else ...[
-                    _buildTodaySection(todayTasks, todaySubjects),
+                    _dashboardSection(
+                      _buildTodaySection(todayTasks, todaySubjects),
+                    ),
                     const SizedBox(height: 24),
-                    _buildUpcomingSection(upcomingTasks),
+                    _dashboardSection(_buildUpcomingSection(upcomingTasks)),
                     const SizedBox(height: 24),
                     _buildWeekStripSection(tasks, exams, deliverables),
                     const SizedBox(height: 20),
-                    _buildUpcomingAssessments(
-                        upcomingExams, upcomingDeliverables),
+                    _dashboardSection(
+                      _buildUpcomingAssessments(
+                          upcomingExams, upcomingDeliverables),
+                    ),
                     const SizedBox(height: 20),
                     _buildSelectedDayActivities(selectedDayTasks),
                   ],
@@ -289,6 +305,17 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  Widget _dashboardSection(Widget child) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: CottagecoreColors.creamCard,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: CottagecoreColors.border),
+        ),
+        child: child,
+      );
 
   Widget _buildNeedsAttentionBanner(List<Task> urgentOrLate) {
     return Container(

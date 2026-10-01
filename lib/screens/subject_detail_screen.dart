@@ -10,7 +10,7 @@ import '../widgets/empty_botanical_state.dart';
 import '../widgets/exam_form_modal.dart';
 import '../widgets/note_form_modal.dart';
 import '../widgets/priority_badge.dart';
-import '../widgets/schedule_editor.dart';
+import '../widgets/subject_form_modal.dart';
 import '../widgets/task_card.dart';
 import '../widgets/task_form_modal.dart';
 
@@ -113,7 +113,7 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Profesor: ${currentSubject.teacher ?? "Por definir"} • Aula: ${currentSubject.classroom ?? "Por asignar"}',
+                              'Profesor: ${currentSubject.teacher ?? "Por definir"}',
                               style: const TextStyle(
                                   fontSize: 13, color: Color(0xFF6E6457)),
                             ),
@@ -664,32 +664,30 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
       );
 
   Future<void> _editLastStudy(BuildContext context, Subject subject) async {
-    final controller = TextEditingController(text: subject.lastStudyNote ?? '');
-    final note = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Dónde me quedé'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          minLines: 3,
-          maxLines: 6,
-          decoration: const InputDecoration(
-            hintText: 'Qué avanzaste y cuál es el siguiente paso...',
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancelar')),
-          FilledButton(
-              onPressed: () =>
-                  Navigator.pop(dialogContext, controller.text.trim()),
-              child: const Text('Guardar')),
-        ],
-      ),
-    );
-    controller.dispose();
+    final isDesktop = MediaQuery.of(context).size.width >= 700;
+    final note = isDesktop
+        ? await showDialog<String>(
+            context: context,
+            builder: (context) => Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: 580,
+                  maxHeight: 600,
+                ),
+                child: _LastStudyForm(initialNote: subject.lastStudyNote ?? ''),
+              ),
+            ),
+          )
+        : await showModalBottomSheet<String>(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (context) =>
+                _LastStudyForm(initialNote: subject.lastStudyNote ?? ''),
+          );
     if (note == null) return;
     await AgendaRepository.instance.updateSubject(
       subject.copyWith(lastStudyNote: note, lastStudyAt: DateTime.now()),
@@ -1874,8 +1872,6 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
               Icons.bookmark_border_rounded),
           _infoCard('Profesor / Docente', subject.teacher ?? 'No especificado',
               Icons.person_outline_rounded),
-          _infoCard('Aula / Espacio físico',
-              subject.classroom ?? 'No especificado', Icons.room_outlined),
           _infoCard(
               'Horario de clases',
               subject.schedules.isNotEmpty
@@ -1940,72 +1936,8 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
     );
   }
 
-  void _editSubjectDialog(BuildContext context, Subject subject) {
-    final nameController = TextEditingController(text: subject.name);
-    final emojiController = TextEditingController(text: subject.emoji);
-    final teacherController =
-        TextEditingController(text: subject.teacher ?? '');
-    final classroomController =
-        TextEditingController(text: subject.classroom ?? '');
-    var schedules = List<ClassSchedule>.from(subject.schedules);
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Editar asignatura',
-            style: TextStyle(fontFamily: 'serif')),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                  controller: nameController,
-                  decoration: const InputDecoration(labelText: 'Nombre')),
-              const SizedBox(height: 10),
-              TextFormField(
-                  controller: emojiController,
-                  decoration: const InputDecoration(labelText: 'Emoji')),
-              const SizedBox(height: 10),
-              TextFormField(
-                  controller: teacherController,
-                  decoration: const InputDecoration(labelText: 'Profesor')),
-              const SizedBox(height: 10),
-              TextFormField(
-                  controller: classroomController,
-                  decoration: const InputDecoration(labelText: 'Aula')),
-              const SizedBox(height: 10),
-              ScheduleEditor(
-                initialSchedules: schedules,
-                onChanged: (value) => schedules = value,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancelar')),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: CottagecoreColors.forest),
-            onPressed: () {
-              final updated = subject.copyWith(
-                name: nameController.text.trim(),
-                emoji: emojiController.text.trim(),
-                teacher: teacherController.text.trim(),
-                classroom: classroomController.text.trim(),
-                schedules: schedules,
-              );
-              AgendaRepository.instance.updateSubject(updated);
-              Navigator.pop(ctx);
-            },
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
-    );
-  }
+  Future<void> _editSubjectDialog(BuildContext context, Subject subject) =>
+      SubjectFormModal.show(context, initialSubject: subject);
 
   void _confirmDeleteSubject(BuildContext context, Subject subject) {
     showDialog(
@@ -2027,6 +1959,113 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
               Navigator.pop(context);
             },
             child: const Text('Eliminar definitivamente'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LastStudyForm extends StatefulWidget {
+  const _LastStudyForm({required this.initialNote});
+
+  final String initialNote;
+
+  @override
+  State<_LastStudyForm> createState() => _LastStudyFormState();
+}
+
+class _LastStudyFormState extends State<_LastStudyForm> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialNote);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return Container(
+      decoration: const BoxDecoration(
+        color: CottagecoreColors.creamCard,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.fromLTRB(20, 16, 20, bottomInset + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 44,
+              height: 5,
+              decoration: BoxDecoration(
+                color: CottagecoreColors.border,
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Text(
+                '🌱 Dónde me quedé',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: CottagecoreColors.forest,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Cerrar',
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close_rounded),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            '¿Qué avanzaste y qué toca retomar?',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: CottagecoreColors.warmBrown,
+            ),
+          ),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            minLines: 3,
+            maxLines: 6,
+            decoration: const InputDecoration(
+              hintText: 'Escribe el punto donde continuar...',
+            ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(context, _controller.text.trim()),
+            style: FilledButton.styleFrom(
+              backgroundColor: CottagecoreColors.forest,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+            icon: const Icon(Icons.check_rounded),
+            label: const Text(
+              'Guardar avance',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
           ),
         ],
       ),

@@ -25,7 +25,8 @@ class ExamFormModal extends StatefulWidget {
       await showDialog(
         context: context,
         builder: (ctx) => Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 580, maxHeight: 800),
             child: ExamFormModal(
@@ -75,7 +76,8 @@ class _ExamFormModalState extends State<ExamFormModal> {
 
     final e = widget.initialExam;
     _nameController = TextEditingController(text: e?.name ?? '');
-    _classroomController = TextEditingController(text: e?.classroom ?? 'Aula Magna');
+    _classroomController =
+        TextEditingController(text: e?.classroom ?? 'Aula Magna');
     _timeController = TextEditingController(text: e?.time ?? '10:00');
     _notesController = TextEditingController(text: e?.notes ?? '');
     _newTopicController = TextEditingController();
@@ -83,10 +85,12 @@ class _ExamFormModalState extends State<ExamFormModal> {
     _subjectId = e?.subjectId ?? widget.initialSubjectId ?? defaultSubId;
     _date = e?.date ?? DateTime.now().add(const Duration(days: 7));
     _state = e?.state ?? ExamState.preparing;
-    _topics = e != null ? List.from(e.topics) : [
-      const ExamTopic(title: 'Tema 1: Introducción', isCompleted: false),
-      const ExamTopic(title: 'Tema 2: Desarrollo', isCompleted: false),
-    ];
+    _topics = e != null
+        ? List.from(e.topics)
+        : [
+            const ExamTopic(title: 'Tema 1: Introducción', isCompleted: false),
+            const ExamTopic(title: 'Tema 2: Desarrollo', isCompleted: false),
+          ];
   }
 
   @override
@@ -120,7 +124,8 @@ class _ExamFormModalState extends State<ExamFormModal> {
 
     final repo = AgendaRepository.instance;
     final exam = Exam(
-      id: widget.initialExam?.id ?? 'exam_${DateTime.now().millisecondsSinceEpoch}',
+      id: widget.initialExam?.id ??
+          'exam_${DateTime.now().millisecondsSinceEpoch}',
       name: _nameController.text.trim(),
       subjectId: _subjectId,
       date: _date,
@@ -128,7 +133,9 @@ class _ExamFormModalState extends State<ExamFormModal> {
       classroom: _classroomController.text.trim(),
       topics: _topics,
       state: _state,
-      notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+      notes: _notesController.text.trim().isEmpty
+          ? null
+          : _notesController.text.trim(),
     );
 
     if (isEditing) {
@@ -172,7 +179,9 @@ class _ExamFormModalState extends State<ExamFormModal> {
               Row(
                 children: [
                   Text(
-                    isEditing ? '📝 Editar examen' : '📖 Registrar nuevo examen',
+                    isEditing
+                        ? '📝 Editar examen'
+                        : '📖 Registrar nuevo examen',
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
@@ -189,17 +198,22 @@ class _ExamFormModalState extends State<ExamFormModal> {
               const SizedBox(height: 14),
 
               // Name
+              const _FieldLabel('Nombre del examen'),
+              const SizedBox(height: 6),
               TextFormField(
                 controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Nombre del examen'),
-                validator: (v) => v == null || v.trim().isEmpty ? 'Indica el nombre' : null,
+                decoration: const InputDecoration(),
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Indica el nombre' : null,
               ),
               const SizedBox(height: 12),
 
               // Subject
+              const _FieldLabel('Asignatura'),
+              const SizedBox(height: 6),
               DropdownButtonFormField<String>(
                 initialValue: _subjectId.isNotEmpty ? _subjectId : null,
-                decoration: const InputDecoration(labelText: 'Asignatura'),
+                decoration: const InputDecoration(),
                 items: repo.subjects.map((sub) {
                   return DropdownMenuItem(
                     value: sub.id,
@@ -214,56 +228,87 @@ class _ExamFormModalState extends State<ExamFormModal> {
 
               // Date & Time
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: InkWell(
-                      onTap: () async {
-                        final picked = await showDatePicker(
-                          context: context,
-                          initialDate: _date,
-                          firstDate: DateTime.now().subtract(const Duration(days: 30)),
-                          lastDate: DateTime.now().add(const Duration(days: 365)),
-                        );
-                        if (picked != null) setState(() => _date = picked);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                        decoration: BoxDecoration(
-                          color: CottagecoreColors.creamDarker,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: CottagecoreColors.border, width: 0.8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const _FieldLabel('Fecha'),
+                        const SizedBox(height: 6),
+                        InkWell(
+                          onTap: () async {
+                            final picked = await showDatePicker(
+                              context: context,
+                              initialDate: _date,
+                              firstDate: DateTime.now()
+                                  .subtract(const Duration(days: 30)),
+                              lastDate:
+                                  DateTime.now().add(const Duration(days: 365)),
+                            );
+                            if (picked != null) setState(() => _date = picked);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: CottagecoreColors.creamDarker,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                  color: CottagecoreColors.border, width: 0.8),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.calendar_today_rounded,
+                                    size: 18, color: CottagecoreColors.sage),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    DateFormat('dd MMM yyyy', 'es_ES')
+                                        .format(_date),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.calendar_today_rounded, size: 18, color: CottagecoreColors.sage),
-                            const SizedBox(width: 8),
-                            Text(DateFormat('dd MMM yyyy', 'es_ES').format(_date)),
-                          ],
-                        ),
-                      ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: TextFormField(
-                      controller: _timeController,
-                      decoration: const InputDecoration(labelText: 'Hora (ej: 10:30)'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const _FieldLabel('Hora'),
+                        const SizedBox(height: 6),
+                        TextFormField(
+                          controller: _timeController,
+                          decoration: const InputDecoration(hintText: '10:30'),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
 
+              const _FieldLabel('Aula / Ubicación'),
+              const SizedBox(height: 6),
               TextFormField(
                 controller: _classroomController,
-                decoration: const InputDecoration(labelText: 'Aula / Ubicación'),
+                decoration: const InputDecoration(),
               ),
               const SizedBox(height: 12),
 
               // State
+              const _FieldLabel('Estado de preparación'),
+              const SizedBox(height: 6),
               DropdownButtonFormField<ExamState>(
                 initialValue: _state,
-                decoration: const InputDecoration(labelText: 'Estado de preparación'),
+                decoration: const InputDecoration(),
                 items: ExamState.values.map((s) {
                   final label = switch (s) {
                     ExamState.notStarted => '🔴 No empezado',
@@ -281,14 +326,7 @@ class _ExamFormModalState extends State<ExamFormModal> {
               const SizedBox(height: 16),
 
               // Temario Section
-              const Text(
-                'Temario del examen',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: CottagecoreColors.warmBrown,
-                ),
-              ),
+              const _FieldLabel('Temario del examen'),
               const SizedBox(height: 8),
               Row(
                 children: [
@@ -327,7 +365,8 @@ class _ExamFormModalState extends State<ExamFormModal> {
                   final topic = _topics[index];
                   return Container(
                     margin: const EdgeInsets.only(bottom: 6),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: CottagecoreColors.creamDarker,
                       borderRadius: BorderRadius.circular(10),
@@ -339,7 +378,8 @@ class _ExamFormModalState extends State<ExamFormModal> {
                           activeColor: CottagecoreColors.calmGreen,
                           onChanged: (val) {
                             setState(() {
-                              _topics[index] = topic.copyWith(isCompleted: val ?? false);
+                              _topics[index] =
+                                  topic.copyWith(isCompleted: val ?? false);
                             });
                           },
                         ),
@@ -347,7 +387,9 @@ class _ExamFormModalState extends State<ExamFormModal> {
                           child: Text(
                             topic.title,
                             style: TextStyle(
-                              decoration: topic.isCompleted ? TextDecoration.lineThrough : null,
+                              decoration: topic.isCompleted
+                                  ? TextDecoration.lineThrough
+                                  : null,
                             ),
                           ),
                         ),
@@ -363,11 +405,12 @@ class _ExamFormModalState extends State<ExamFormModal> {
               const SizedBox(height: 12),
 
               // Notes
+              const _FieldLabel('Notas / Recordatorios'),
+              const SizedBox(height: 6),
               TextFormField(
                 controller: _notesController,
                 maxLines: 2,
                 decoration: const InputDecoration(
-                  labelText: 'Notas / Recordatorios',
                   hintText: 'Material permitido, tipo de examen, etc.',
                 ),
               ),
@@ -379,12 +422,14 @@ class _ExamFormModalState extends State<ExamFormModal> {
                 style: FilledButton.styleFrom(
                   backgroundColor: CottagecoreColors.forest,
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                 ),
                 icon: const Icon(Icons.check_rounded),
                 label: Text(
                   isEditing ? 'Actualizar examen' : 'Guardar examen',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w700),
                 ),
               ),
             ],
@@ -393,4 +438,20 @@ class _ExamFormModalState extends State<ExamFormModal> {
       ),
     );
   }
+}
+
+class _FieldLabel extends StatelessWidget {
+  const _FieldLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Text(
+        text,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: CottagecoreColors.warmBrown,
+        ),
+      );
 }

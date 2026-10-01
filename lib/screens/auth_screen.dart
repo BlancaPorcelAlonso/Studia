@@ -129,16 +129,32 @@ class _AuthScreenState extends State<AuthScreen> {
                       },
                     ),
                     const SizedBox(height: 22),
-                    FilledButton(
+                    FilledButton.icon(
                       onPressed: _isLoading ? null : _submit,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        child: _isLoading
-                            ? const SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : Text(_isSigningUp ? 'Crear cuenta' : 'Entrar'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: CottagecoreColors.forest,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      icon: _isLoading
+                          ? const SizedBox.square(
+                              dimension: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : Icon(_isSigningUp
+                              ? Icons.person_add_alt_1_rounded
+                              : Icons.login_rounded),
+                      label: Text(
+                        _isSigningUp ? 'Crear cuenta' : 'Entrar',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                     TextButton(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/models.dart';
 import '../theme/cottagecore_theme.dart';
 
@@ -45,18 +46,107 @@ class _ScheduleEditorState extends State<ScheduleEditor> {
     widget.onChanged(List<ClassSchedule>.from(_schedules));
   }
 
+  void _updateStartTime(
+    int index,
+    ClassSchedule schedule, {
+    int? hour,
+    int? minute,
+  }) {
+    final nextHour = hour ?? schedule.startMinutes ~/ 60;
+    final nextMinute = minute ?? schedule.startMinutes % 60;
+    if (nextHour > 23 || nextMinute > 59) return;
+    _update(
+      index,
+      schedule.copyWith(
+        startMinutes: nextHour * 60 + nextMinute,
+      ),
+    );
+  }
+
+  void _updateDuration(
+    int index,
+    ClassSchedule schedule, {
+    int? hours,
+    int? minutes,
+  }) {
+    final currentHours = schedule.durationMinutes ~/ 60;
+    final currentMinutes = schedule.durationMinutes % 60;
+    final totalMinutes =
+        ((hours ?? currentHours) * 60 + (minutes ?? currentMinutes))
+            .clamp(1, 1440);
+    _update(index, schedule.copyWith(durationMinutes: totalMinutes));
+  }
+
+  Widget _buildStartTimeEditor(int index, ClassSchedule schedule) {
+    return _fieldSection(
+      'Hora de inicio',
+      Row(
+        children: [
+          Expanded(
+            child: TextFormField(
+              key: ValueKey('schedule-hour-$index'),
+              initialValue:
+                  (schedule.startMinutes ~/ 60).toString().padLeft(2, '0'),
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(2),
+              ],
+              decoration: const InputDecoration(hintText: 'HH'),
+              onChanged: (value) {
+                final hour = int.tryParse(value);
+                if (hour != null && hour <= 23) {
+                  _updateStartTime(index, schedule, hour: hour);
+                }
+              },
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 2),
+            child: Text(':', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+          Expanded(
+            child: TextFormField(
+              key: ValueKey('schedule-minute-$index'),
+              initialValue:
+                  (schedule.startMinutes % 60).toString().padLeft(2, '0'),
+              keyboardType: TextInputType.number,
+              textAlign: TextAlign.center,
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(2),
+              ],
+              decoration: const InputDecoration(hintText: 'MM'),
+              onChanged: (value) {
+                final minute = int.tryParse(value);
+                if (minute != null && minute <= 59) {
+                  _updateStartTime(index, schedule, minute: minute);
+                }
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _fieldSection(String label, Widget field) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _FieldLabel(label),
+          const SizedBox(height: 6),
+          field,
+        ],
+      );
+
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
+        const _FieldLabel(
           'Horarios de clase',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: CottagecoreColors.warmBrown,
-          ),
         ),
         const SizedBox(height: 6),
         if (_schedules.isEmpty)
@@ -71,11 +161,12 @@ class _ScheduleEditorState extends State<ScheduleEditor> {
               padding: const EdgeInsets.only(bottom: 14),
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  final fields = [
+                  final dayField = _fieldSection(
+                    'Día',
                     DropdownButtonFormField<int>(
                       initialValue: schedule.weekday,
                       isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'Día'),
+                      decoration: const InputDecoration(),
                       items: const [
                         DropdownMenuItem(value: 1, child: Text('Lunes')),
                         DropdownMenuItem(value: 2, child: Text('Martes')),
@@ -91,41 +182,54 @@ class _ScheduleEditorState extends State<ScheduleEditor> {
                         }
                       },
                     ),
-                    TextFormField(
-                      initialValue: schedule.timeLabel,
-                      keyboardType: TextInputType.datetime,
-                      decoration: const InputDecoration(
-                        labelText: 'Hora de inicio',
-                        hintText: '17:00',
+                  );
+
+                  // 2. Hora de Inicio
+                  final startTimeField = _buildStartTimeEditor(index, schedule);
+
+                  // 3. Horas de Duración
+                  final durationHoursField = _fieldSection(
+                    'Duración (h)',
+                    DropdownButtonFormField<int>(
+                      initialValue: schedule.durationMinutes ~/ 60,
+                      isExpanded: true,
+                      decoration: const InputDecoration(),
+                      items: List.generate(
+                        25,
+                        (hour) => DropdownMenuItem(
+                          value: hour,
+                          child: Text('$hour h'),
+                        ),
                       ),
                       onChanged: (value) {
-                        final minutes = ClassSchedule.parseTime(value);
-                        if (minutes != null) {
-                          _update(
-                              index, schedule.copyWith(startMinutes: minutes));
+                        if (value != null) {
+                          _updateDuration(index, schedule, hours: value);
                         }
                       },
                     ),
-                    TextFormField(
-                      initialValue: schedule.durationHoursLabel,
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                        labelText: 'Duración (horas)',
-                        hintText: '2',
+                  );
+
+                  // 4. Minutos de Duración
+                  final durationMinutesField = _fieldSection(
+                    'Duración (m)',
+                    DropdownButtonFormField<int>(
+                      initialValue: schedule.durationMinutes % 60,
+                      isExpanded: true,
+                      decoration: const InputDecoration(),
+                      items: List.generate(
+                        60,
+                        (minute) => DropdownMenuItem(
+                          value: minute,
+                          child: Text('$minute min'),
+                        ),
                       ),
                       onChanged: (value) {
-                        final hours =
-                            double.tryParse(value.replaceAll(',', '.'));
-                        if (hours != null && hours > 0) {
-                          _update(
-                              index,
-                              schedule.copyWith(
-                                  durationMinutes: (hours * 60).round()));
+                        if (value != null) {
+                          _updateDuration(index, schedule, minutes: value);
                         }
                       },
                     ),
-                  ];
+                  );
 
                   return Container(
                     padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
@@ -159,22 +263,20 @@ class _ScheduleEditorState extends State<ScheduleEditor> {
                           ],
                         ),
                         const SizedBox(height: 4),
-                        if (constraints.maxWidth < 500)
-                          ...fields.map((field) => Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: field,
-                              ))
-                        else
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(flex: 5, child: fields[0]),
-                              const SizedBox(width: 8),
-                              Expanded(flex: 3, child: fields[1]),
-                              const SizedBox(width: 8),
-                              Expanded(flex: 3, child: fields[2]),
-                            ],
-                          ),
+                        // Día arriba en su propio espacio
+                        dayField,
+                        const SizedBox(height: 10),
+                        // Fila única para Hora Inicio, Horas Duración y Minutos Duración
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(flex: 3, child: startTimeField),
+                            const SizedBox(width: 8),
+                            Expanded(flex: 2, child: durationHoursField),
+                            const SizedBox(width: 8),
+                            Expanded(flex: 2, child: durationMinutesField),
+                          ],
+                        ),
                       ],
                     ),
                   );
@@ -197,4 +299,20 @@ class _ScheduleEditorState extends State<ScheduleEditor> {
       ],
     );
   }
+}
+
+class _FieldLabel extends StatelessWidget {
+  const _FieldLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Text(
+        text,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: CottagecoreColors.warmBrown,
+        ),
+      );
 }

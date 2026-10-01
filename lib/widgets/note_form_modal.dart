@@ -220,10 +220,11 @@ class _NoteFormModalState extends State<NoteFormModal> {
               ),
               const SizedBox(height: 14),
 
+              const _FieldLabel('Título del apunte'),
+              const SizedBox(height: 6),
               TextFormField(
                 controller: _titleController,
                 decoration: const InputDecoration(
-                  labelText: 'Título del apunte',
                   hintText: 'Ej. Resumen de Concurrencia y Bloqueos',
                 ),
                 validator: (v) =>
@@ -232,31 +233,47 @@ class _NoteFormModalState extends State<NoteFormModal> {
               const SizedBox(height: 12),
 
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: _subjectId.isNotEmpty ? _subjectId : null,
-                      decoration:
-                          const InputDecoration(labelText: 'Asignatura'),
-                      items: repo.subjects.map((sub) {
-                        return DropdownMenuItem(
-                          value: sub.id,
-                          child: Text('${sub.emoji} ${sub.name}'),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) setState(() => _subjectId = val);
-                      },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const _FieldLabel('Asignatura'),
+                        const SizedBox(height: 6),
+                        DropdownButtonFormField<String>(
+                          initialValue:
+                              _subjectId.isNotEmpty ? _subjectId : null,
+                          decoration: const InputDecoration(),
+                          items: repo.subjects.map((sub) {
+                            return DropdownMenuItem(
+                              value: sub.id,
+                              child: Text('${sub.emoji} ${sub.name}'),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setState(() => _subjectId = val);
+                            }
+                          },
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: TextFormField(
-                      controller: _topicController,
-                      decoration: const InputDecoration(
-                        labelText: 'Tema / Unidad',
-                        hintText: 'Tema 2',
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const _FieldLabel('Tema / Unidad'),
+                        const SizedBox(height: 6),
+                        TextFormField(
+                          controller: _topicController,
+                          decoration: const InputDecoration(
+                            hintText: 'Tema 2',
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -264,44 +281,59 @@ class _NoteFormModalState extends State<NoteFormModal> {
               const SizedBox(height: 12),
 
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: DropdownButtonFormField<String>(
-                      initialValue: [
-                        'Resumen',
-                        'Cuestionario',
-                        'Esquema',
-                        'Apuntes',
-                        'Código'
-                      ].contains(_categoryController.text)
-                          ? _categoryController.text
-                          : 'Resumen',
-                      decoration: const InputDecoration(labelText: 'Categoría'),
-                      items: const [
-                        DropdownMenuItem(
-                            value: 'Resumen', child: Text('Resumen')),
-                        DropdownMenuItem(
-                            value: 'Cuestionario', child: Text('Cuestionario')),
-                        DropdownMenuItem(
-                            value: 'Esquema', child: Text('Esquema')),
-                        DropdownMenuItem(
-                            value: 'Apuntes', child: Text('Apuntes')),
-                        DropdownMenuItem(
-                            value: 'Código', child: Text('Código')),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const _FieldLabel('Categoría'),
+                        const SizedBox(height: 6),
+                        DropdownButtonFormField<String>(
+                          initialValue: [
+                            'Resumen',
+                            'Cuestionario',
+                            'Esquema',
+                            'Apuntes',
+                            'Código'
+                          ].contains(_categoryController.text)
+                              ? _categoryController.text
+                              : 'Resumen',
+                          decoration: const InputDecoration(),
+                          items: const [
+                            DropdownMenuItem(
+                                value: 'Resumen', child: Text('Resumen')),
+                            DropdownMenuItem(
+                                value: 'Cuestionario',
+                                child: Text('Cuestionario')),
+                            DropdownMenuItem(
+                                value: 'Esquema', child: Text('Esquema')),
+                            DropdownMenuItem(
+                                value: 'Apuntes', child: Text('Apuntes')),
+                            DropdownMenuItem(
+                                value: 'Código', child: Text('Código')),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) _categoryController.text = val;
+                          },
+                        ),
                       ],
-                      onChanged: (val) {
-                        if (val != null) _categoryController.text = val;
-                      },
                     ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: TextFormField(
-                      controller: _tagsController,
-                      decoration: const InputDecoration(
-                        labelText: 'Etiquetas',
-                        hintText: 'Flutter, UI, Examen',
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const _FieldLabel('Etiquetas'),
+                        const SizedBox(height: 6),
+                        TextFormField(
+                          controller: _tagsController,
+                          decoration: const InputDecoration(
+                            hintText: 'Flutter, UI, Examen',
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -309,11 +341,12 @@ class _NoteFormModalState extends State<NoteFormModal> {
               const SizedBox(height: 12),
 
               // Content editor
+              const _FieldLabel('Contenido del apunte'),
+              const SizedBox(height: 6),
               TextFormField(
                 controller: _contentController,
                 maxLines: 7,
                 decoration: const InputDecoration(
-                  labelText: 'Contenido del apunte (Notion-style)',
                   hintText:
                       'Escribe tus notas, fórmulas, ideas clave, definiciones...',
                 ),
@@ -323,10 +356,7 @@ class _NoteFormModalState extends State<NoteFormModal> {
               Row(
                 children: [
                   const Expanded(
-                    child: Text(
-                      'Documentos adjuntos',
-                      style: TextStyle(fontWeight: FontWeight.w700),
-                    ),
+                    child: _FieldLabel('Documentos adjuntos'),
                   ),
                   OutlinedButton.icon(
                     onPressed: _attachFile,
@@ -359,14 +389,7 @@ class _NoteFormModalState extends State<NoteFormModal> {
               const SizedBox(height: 14),
 
               // Checklist section
-              const Text(
-                'Puntos clave / Checklist de repaso',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: CottagecoreColors.warmBrown,
-                ),
-              ),
+              const _FieldLabel('Puntos clave / Checklist de repaso'),
               const SizedBox(height: 6),
               Row(
                 children: [
@@ -451,4 +474,20 @@ class _NoteFormModalState extends State<NoteFormModal> {
       ),
     );
   }
+}
+
+class _FieldLabel extends StatelessWidget {
+  const _FieldLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Text(
+        text,
+        style: const TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: CottagecoreColors.warmBrown,
+        ),
+      );
 }
