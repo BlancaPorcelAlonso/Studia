@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/models.dart';
+import 'supabase_agenda_sync.dart';
 
 class AgendaRepository extends ChangeNotifier {
   static AgendaRepository? _instance;
@@ -17,6 +19,9 @@ class AgendaRepository extends ChangeNotifier {
   List<SubjectAbsence> _absences = [];
   List<SubjectGrade> _grades = [];
   bool _initialized = false;
+  SupabaseAgendaSync? _cloudSync;
+  String? _cloudUserId;
+  String? _syncError;
 
   List<Subject> get subjects => List.unmodifiable(_subjects);
   List<Task> get tasks => List.unmodifiable(_tasks);
@@ -26,9 +31,34 @@ class AgendaRepository extends ChangeNotifier {
   List<SubjectAbsence> get absences => List.unmodifiable(_absences);
   List<SubjectGrade> get grades => List.unmodifiable(_grades);
   bool get isInitialized => _initialized;
+  bool get isCloudConnected => _cloudSync != null;
+  String? get syncError => _syncError;
 
-  Future<void> initialize() async {
-    if (_initialized) return;
+  Future<void> initialize({bool useCloud = false}) async {
+    if (useCloud) {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) throw StateError('Se requiere una sesión activa.');
+      if (_initialized && _cloudUserId == user.id) return;
+      _cloudSync = SupabaseAgendaSync(Supabase.instance.client, user.id);
+      _initialized = false;
+      final snapshot = await _cloudSync!.load();
+      _subjects = snapshot.subjects;
+      _tasks = snapshot.tasks;
+      _exams = snapshot.exams;
+      _notes = snapshot.notes;
+      _deliverables = snapshot.deliverables;
+      _absences = snapshot.absences;
+      _grades = snapshot.grades;
+      _initialized = true;
+      _cloudUserId = user.id;
+      _syncError = null;
+      await _cacheAll();
+      notifyListeners();
+      return;
+    }
+    if (_initialized && _cloudSync == null) return;
+    _cloudSync = null;
+    _cloudUserId = null;
     final prefs = await SharedPreferences.getInstance();
 
     final storedSubjects = prefs.getStringList('agenda_subjects_v1');
@@ -85,6 +115,21 @@ class AgendaRepository extends ChangeNotifier {
         .toList();
 
     _initialized = true;
+    notifyListeners();
+  }
+
+  Future<void> resetForSignedOut() async {
+    _subjects = [];
+    _tasks = [];
+    _exams = [];
+    _notes = [];
+    _deliverables = [];
+    _absences = [];
+    _grades = [];
+    _cloudSync = null;
+    _cloudUserId = null;
+    _initialized = false;
+    _syncError = null;
     notifyListeners();
   }
 
@@ -148,6 +193,7 @@ class AgendaRepository extends ChangeNotifier {
   Future<void> deleteTask(String taskId) async {
     _tasks.removeWhere((t) => t.id == taskId);
     await _persistTasks();
+    await _syncRemote(() => _cloudSync?.delete('tasks', taskId));
     notifyListeners();
   }
 
@@ -183,6 +229,7 @@ class AgendaRepository extends ChangeNotifier {
     await _persistDeliverables();
     await _persistAbsences();
     await _persistGrades();
+    await _syncRemote(() => _cloudSync?.delete('subjects', subjectId));
     notifyListeners();
   }
 
@@ -236,6 +283,7 @@ class AgendaRepository extends ChangeNotifier {
   Future<void> deleteExam(String examId) async {
     _exams.removeWhere((e) => e.id == examId);
     await _persistExams();
+    await _syncRemote(() => _cloudSync?.delete('exams', examId));
     notifyListeners();
   }
 
@@ -259,6 +307,7 @@ class AgendaRepository extends ChangeNotifier {
   Future<void> deleteNote(String noteId) async {
     _notes.removeWhere((n) => n.id == noteId);
     await _persistNotes();
+    await _syncRemote(() => _cloudSync?.delete('study_notes', noteId));
     notifyListeners();
   }
 
@@ -282,6 +331,7 @@ class AgendaRepository extends ChangeNotifier {
   Future<void> deleteDeliverable(String deliverableId) async {
     _deliverables.removeWhere((item) => item.id == deliverableId);
     await _persistDeliverables();
+    await _syncRemote(() => _cloudSync?.delete('deliverables', deliverableId));
     notifyListeners();
   }
 
@@ -305,6 +355,7 @@ class AgendaRepository extends ChangeNotifier {
   Future<void> deleteAbsence(String absenceId) async {
     _absences.removeWhere((item) => item.id == absenceId);
     await _persistAbsences();
+    await _syncRemote(() => _cloudSync?.delete('subject_absences', absenceId));
     notifyListeners();
   }
 
@@ -317,6 +368,7 @@ class AgendaRepository extends ChangeNotifier {
   Future<void> deleteGrade(String gradeId) async {
     _grades.removeWhere((item) => item.id == gradeId);
     await _persistGrades();
+    await _syncRemote(() => _cloudSync?.delete('subject_grades', gradeId));
     notifyListeners();
   }
 
@@ -330,6 +382,7 @@ class AgendaRepository extends ChangeNotifier {
     _deliverables = [];
     _absences = [];
     _grades = [];
+    await _syncRemote(() => _cloudSync?.resetAll());
     await _persistSubjects();
     await _persistTasks();
     await _persistExams();
@@ -346,24 +399,28 @@ class AgendaRepository extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final encoded = _tasks.map((t) => jsonEncode(t.toJson())).toList();
     await prefs.setStringList('agenda_tasks_v1', encoded);
+    await _syncRemote(() => _cloudSync?.saveTasks(_tasks));
   }
 
   Future<void> _persistSubjects() async {
     final prefs = await SharedPreferences.getInstance();
     final encoded = _subjects.map((s) => jsonEncode(s.toJson())).toList();
     await prefs.setStringList('agenda_subjects_v1', encoded);
+    await _syncRemote(() => _cloudSync?.saveSubjects(_subjects));
   }
 
   Future<void> _persistExams() async {
     final prefs = await SharedPreferences.getInstance();
     final encoded = _exams.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList('agenda_exams_v1', encoded);
+    await _syncRemote(() => _cloudSync?.saveExams(_exams));
   }
 
   Future<void> _persistNotes() async {
     final prefs = await SharedPreferences.getInstance();
     final encoded = _notes.map((n) => jsonEncode(n.toJson())).toList();
     await prefs.setStringList('agenda_notes_v1', encoded);
+    await _syncRemote(() => _cloudSync?.saveNotes(_notes));
   }
 
   Future<void> _persistDeliverables() async {
@@ -371,18 +428,63 @@ class AgendaRepository extends ChangeNotifier {
     final encoded =
         _deliverables.map((item) => jsonEncode(item.toJson())).toList();
     await prefs.setStringList('agenda_deliverables_v1', encoded);
+    await _syncRemote(() => _cloudSync?.saveDeliverables(_deliverables));
   }
 
   Future<void> _persistAbsences() async {
     final prefs = await SharedPreferences.getInstance();
     final encoded = _absences.map((item) => jsonEncode(item.toJson())).toList();
     await prefs.setStringList('agenda_absences_v1', encoded);
+    await _syncRemote(() => _cloudSync?.saveAbsences(_absences));
   }
 
   Future<void> _persistGrades() async {
     final prefs = await SharedPreferences.getInstance();
     final encoded = _grades.map((item) => jsonEncode(item.toJson())).toList();
     await prefs.setStringList('agenda_grades_v1', encoded);
+    await _syncRemote(() => _cloudSync?.saveGrades(_grades));
+  }
+
+  Future<void> _syncRemote(Future<void>? Function() operation) async {
+    if (_cloudSync == null) return;
+    try {
+      await operation();
+      _syncError = null;
+    } catch (error) {
+      _syncError = error.toString();
+    }
+  }
+
+  Future<void> _cacheAll() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      'agenda_subjects_v1',
+      _subjects.map((item) => jsonEncode(item.toJson())).toList(),
+    );
+    await prefs.setStringList(
+      'agenda_tasks_v1',
+      _tasks.map((item) => jsonEncode(item.toJson())).toList(),
+    );
+    await prefs.setStringList(
+      'agenda_exams_v1',
+      _exams.map((item) => jsonEncode(item.toJson())).toList(),
+    );
+    await prefs.setStringList(
+      'agenda_notes_v1',
+      _notes.map((item) => jsonEncode(item.toJson())).toList(),
+    );
+    await prefs.setStringList(
+      'agenda_deliverables_v1',
+      _deliverables.map((item) => jsonEncode(item.toJson())).toList(),
+    );
+    await prefs.setStringList(
+      'agenda_absences_v1',
+      _absences.map((item) => jsonEncode(item.toJson())).toList(),
+    );
+    await prefs.setStringList(
+      'agenda_grades_v1',
+      _grades.map((item) => jsonEncode(item.toJson())).toList(),
+    );
   }
 
   // --- Seed Data ---

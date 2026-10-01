@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/agenda_repository.dart';
 import '../theme/cottagecore_theme.dart';
 import 'subjects_screen.dart';
@@ -178,9 +179,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       _settingRow(
                         title: 'Modo de almacenamiento',
-                        subtitle: 'Local Offline con SharedPreferences (V1)',
-                        trailing: const Text('Sincronizado', style: TextStyle(color: CottagecoreColors.calmGreen, fontWeight: FontWeight.w700)),
+                        subtitle: repo.isCloudConnected
+                            ? 'Supabase · ${Supabase.instance.client.auth.currentUser?.email ?? 'Cuenta activa'}'
+                            : 'Solo este dispositivo · SharedPreferences',
+                        trailing: Icon(
+                          repo.isCloudConnected
+                              ? Icons.cloud_done_outlined
+                              : Icons.cloud_off_outlined,
+                          color: repo.isCloudConnected
+                              ? CottagecoreColors.calmGreen
+                              : CottagecoreColors.warmBrown,
+                        ),
                       ),
+                      if (repo.syncError != null) ...[
+                        const Divider(height: 20),
+                        Row(
+                          children: [
+                            const Icon(Icons.warning_amber_rounded,
+                                color: CottagecoreColors.terracotta),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'No se pudo sincronizar. Los cambios siguen guardados en este dispositivo. ${repo.syncError}',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      if (repo.isCloudConnected) ...[
+                        const Divider(height: 20),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.logout_rounded),
+                          title: const Text('Cerrar sesión'),
+                          onTap: () => Supabase.instance.client.auth.signOut(),
+                        ),
+                      ],
                       const Divider(height: 20),
                       ListTile(
                         contentPadding: EdgeInsets.zero,
