@@ -30,17 +30,10 @@ class _AuthScreenState extends State<AuthScreen> {
     try {
       final auth = Supabase.instance.client.auth;
       if (_isSigningUp) {
-        final response = await auth.signUp(
+        await auth.signUp(
           email: _email.text.trim(),
           password: _password.text,
         );
-        if (response.session == null && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Confirma tu correo y después inicia sesión.'),
-            ),
-          );
-        }
       } else {
         await auth.signInWithPassword(
           email: _email.text.trim(),

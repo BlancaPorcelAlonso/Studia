@@ -244,11 +244,16 @@ class _NoteFormModalState extends State<NoteFormModal> {
                         DropdownButtonFormField<String>(
                           initialValue:
                               _subjectId.isNotEmpty ? _subjectId : null,
+                          isExpanded: true,
                           decoration: const InputDecoration(),
                           items: repo.subjects.map((sub) {
                             return DropdownMenuItem(
                               value: sub.id,
-                              child: Text('${sub.emoji} ${sub.name}'),
+                              child: Text(
+                                '${sub.emoji} ${sub.name}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             );
                           }).toList(),
                           onChanged: (val) {
