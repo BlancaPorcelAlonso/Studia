@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
+import 'package:open_filex/open_filex.dart';
 import '../models/models.dart';
 import '../services/agenda_repository.dart';
 import '../theme/cottagecore_theme.dart';
@@ -15,9 +17,14 @@ import '../widgets/task_card.dart';
 import '../widgets/task_form_modal.dart';
 
 class SubjectDetailScreen extends StatefulWidget {
-  const SubjectDetailScreen({required this.subject, super.key});
+  const SubjectDetailScreen({
+    required this.subject,
+    this.initialTabIndex = 0,
+    super.key,
+  });
 
   final Subject subject;
+  final int initialTabIndex;
 
   @override
   State<SubjectDetailScreen> createState() => _SubjectDetailScreenState();
@@ -56,6 +63,7 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
 
         return DefaultTabController(
           length: 7,
+          initialIndex: widget.initialTabIndex.clamp(0, 6),
           child: Scaffold(
             appBar: AppBar(
               title: Text('${currentSubject.emoji} ${currentSubject.name}'),
@@ -562,7 +570,7 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
     return InkWell(
       onTap: attachment == null
           ? () => NoteFormModal.show(context, initialNote: note)
-          : () => _downloadAttachment(attachment),
+          : () => _openAttachment(attachment),
       borderRadius: BorderRadius.circular(12),
       child: Container(
         height: 112,
@@ -1389,6 +1397,32 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
     ));
   }
 
+  Future<void> _openAttachment(NoteAttachment attachment) async {
+    if (attachment.bytesBase64.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text(
+                  'Este archivo no está disponible para abrirse directamente.')),
+        );
+      }
+      return;
+    }
+
+    final tempDir = await Directory.systemTemp.createTemp('agenda_open_');
+    final safeName =
+        attachment.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final file = File('${tempDir.path}/$safeName');
+    await file.writeAsBytes(base64Decode(attachment.bytesBase64));
+
+    final result = await OpenFilex.open(file.path);
+    if (mounted && result.type != ResultType.done) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo abrir ${attachment.name}.')),
+      );
+    }
+  }
+
   Future<void> _downloadAttachment(NoteAttachment attachment) async {
     await FilePicker.saveFile(
       fileName: attachment.name,
@@ -1572,6 +1606,16 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
                                               style:
                                                   const TextStyle(fontSize: 12),
                                             ),
+                                          ),
+                                          IconButton(
+                                            tooltip: 'Abrir ${attachment.name}',
+                                            visualDensity:
+                                                VisualDensity.compact,
+                                            onPressed: () =>
+                                                _openAttachment(attachment),
+                                            icon: const Icon(
+                                                Icons.open_in_new_rounded,
+                                                size: 18),
                                           ),
                                           IconButton(
                                             tooltip:

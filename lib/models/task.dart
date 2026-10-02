@@ -33,6 +33,8 @@ class Task {
     this.notes,
     this.links = const [],
     this.files = const [],
+    this.linkedExamId,
+    this.linkedDeliverableId,
   });
 
   final String id;
@@ -48,6 +50,8 @@ class Task {
   final String? notes;
   final List<String> links;
   final List<String> files;
+  final String? linkedExamId;
+  final String? linkedDeliverableId;
 
   String get statusLabel {
     switch (status) {
@@ -165,6 +169,8 @@ class Task {
     String? notes,
     List<String>? links,
     List<String>? files,
+    String? linkedExamId,
+    String? linkedDeliverableId,
   }) {
     return Task(
       id: id ?? this.id,
@@ -180,6 +186,8 @@ class Task {
       notes: notes ?? this.notes,
       links: links ?? this.links,
       files: files ?? this.files,
+      linkedExamId: linkedExamId ?? this.linkedExamId,
+      linkedDeliverableId: linkedDeliverableId ?? this.linkedDeliverableId,
     );
   }
 
@@ -197,6 +205,8 @@ class Task {
         'notes': notes,
         'links': links,
         'files': files,
+        'linkedExamId': linkedExamId,
+        'linkedDeliverableId': linkedDeliverableId,
       };
 
   factory Task.fromJson(Map<String, dynamic> json) => Task(
@@ -224,9 +234,15 @@ class Task {
             : null,
         description: json['description'] as String?,
         notes: json['notes'] as String?,
-        links: (json['links'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+        links: (json['links'] as List<dynamic>?)
+                ?.map((e) => e as String)
+                .toList() ??
             const [],
-        files: (json['files'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+        files: (json['files'] as List<dynamic>?)
+                ?.map((e) => e as String)
+                .toList() ??
             const [],
+        linkedExamId: json['linkedExamId'] as String?,
+        linkedDeliverableId: json['linkedDeliverableId'] as String?,
       );
 }

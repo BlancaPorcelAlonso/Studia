@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/models.dart';
+import '../screens/subject_detail_screen.dart';
 import '../services/agenda_repository.dart';
 import '../theme/cottagecore_theme.dart';
 import 'date_badge.dart';
@@ -21,6 +22,26 @@ class TaskCard extends StatelessWidget {
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
   final bool showDragHandle;
+
+  void _openLinkedSection(BuildContext context, {required int tabIndex}) {
+    final subject = AgendaRepository.instance.getSubjectById(task.subjectId);
+    if (subject == null) return;
+
+    final tabController = DefaultTabController.maybeOf(context);
+    if (tabController != null) {
+      tabController.animateTo(tabIndex);
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SubjectDetailScreen(
+          subject: subject,
+          initialTabIndex: tabIndex,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -154,6 +175,38 @@ class TaskCard extends StatelessWidget {
               const SizedBox(height: 10),
 
               const Divider(height: 16, thickness: 0.7),
+
+              if (task.linkedExamId != null || task.linkedDeliverableId != null) ...[
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (task.linkedExamId != null)
+                      TextButton.icon(
+                        onPressed: () => _openLinkedSection(context, tabIndex: 4),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          minimumSize: Size.zero,
+                        ),
+                        icon: const Icon(Icons.school_outlined, size: 15),
+                        label: const Text('Ver examen'),
+                      ),
+                    if (task.linkedDeliverableId != null)
+                      TextButton.icon(
+                        onPressed: () => _openLinkedSection(context, tabIndex: 2),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          minimumSize: Size.zero,
+                        ),
+                        icon: const Icon(Icons.assignment_outlined, size: 15),
+                        label: const Text('Ver entrega'),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
 
               // Bottom row: Due Date Info + Checkbox / Status Toggle
               Wrap(

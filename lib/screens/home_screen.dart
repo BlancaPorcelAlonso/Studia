@@ -183,7 +183,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                         'home-left-bottom-section'),
                                     child: _dashboardSection(
                                       _buildUpcomingSection(
-                                        upcomingTasks.take(3).toList(),
+                                        upcomingTasks.take(2).toList(),
                                       ),
                                     ),
                                   ),
@@ -229,7 +229,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       _buildTodaySection(todayTasks, todaySubjects),
                     ),
                     const SizedBox(height: 24),
-                    _dashboardSection(_buildUpcomingSection(upcomingTasks)),
+                    _dashboardSection(
+                      _buildUpcomingSection(upcomingTasks.take(2).toList()),
+                    ),
                     const SizedBox(height: 24),
                     _buildWeekStripSection(tasks, exams, deliverables),
                     const SizedBox(height: 20),
@@ -476,6 +478,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildUpcomingSection(List<Task> upcomingTasks) {
+    final compactTasks = upcomingTasks.take(6).toList();
+    final visibleSlotCount = compactTasks.length < 2 ? 2 : 2;
+    final fixedHeight = visibleSlotCount * 86.0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -495,84 +501,98 @@ class _HomeScreenState extends State<HomeScreen> {
             emoji: '🌾',
           )
         else
-          Column(
-            children: upcomingTasks.map((task) {
-              final sub =
-                  AgendaRepository.instance.getSubjectById(task.subjectId);
-              final subColor = sub?.color ?? CottagecoreColors.sage;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Card(
-                  child: InkWell(
-                    onTap: () => TaskFormModal.show(context, initialTask: task),
-                    borderRadius: BorderRadius.circular(18),
-                    child: Container(
-                      constraints: const BoxConstraints(minHeight: 68),
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
+          SizedBox(
+            height: fixedHeight,
+            child: Scrollbar(
+              thumbVisibility: compactTasks.length > 2,
+              child: ListView.separated(
+                itemCount: compactTasks.length,
+                padding: EdgeInsets.zero,
+                physics: compactTasks.length > 2
+                    ? const AlwaysScrollableScrollPhysics()
+                    : const NeverScrollableScrollPhysics(),
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final task = compactTasks[index];
+                  final sub = AgendaRepository.instance.getSubjectById(task.subjectId);
+                  final subColor = sub?.color ?? CottagecoreColors.sage;
+
+                  return SizedBox(
+                    height: 78,
+                    child: Card(
+                      child: InkWell(
+                        onTap: () => TaskFormModal.show(context, initialTask: task),
                         borderRadius: BorderRadius.circular(18),
-                        border:
-                            Border(left: BorderSide(color: subColor, width: 5)),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 66,
-                            height: 48,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: CottagecoreColors.creamDarker,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              DateFormat('d MMM', 'es_ES').format(task.dueDate),
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: CottagecoreColors.warmBrown,
-                              ),
+                        child: Container(
+                          constraints: const BoxConstraints(minHeight: 68),
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border(
+                              left: BorderSide(color: subColor, width: 5),
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  task.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 66,
+                                height: 48,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: CottagecoreColors.creamDarker,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  DateFormat('d MMM', 'es_ES').format(task.dueDate),
+                                  textAlign: TextAlign.center,
                                   style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: CottagecoreColors.forest,
-                                  ),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  '${sub?.emoji ?? '📚'} ${sub?.name ?? 'Materia'} · ${task.dueInfo.text}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
                                     fontSize: 11,
-                                    color: task.dueInfo.color,
+                                    fontWeight: FontWeight.w700,
+                                    color: CottagecoreColors.warmBrown,
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      task.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: CottagecoreColors.forest,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      '${sub?.emoji ?? '📚'} ${sub?.name ?? 'Materia'} · ${task.dueInfo.text}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: task.dueInfo.color,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(Icons.chevron_right_rounded,
+                                  color: CottagecoreColors.warmBrown),
+                            ],
                           ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.chevron_right_rounded,
-                              color: CottagecoreColors.warmBrown),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              );
-            }).toList(),
+                  );
+                },
+              ),
+            ),
           ),
       ],
     );

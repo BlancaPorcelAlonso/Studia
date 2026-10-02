@@ -6,6 +6,7 @@ import 'package:agenda/main.dart';
 import 'package:agenda/services/agenda_repository.dart';
 import 'package:agenda/models/models.dart';
 import 'package:agenda/widgets/desktop_sidebar.dart';
+import 'package:agenda/widgets/task_card.dart';
 
 void main() {
   setUp(() async {
@@ -210,6 +211,80 @@ void main() {
     expect(find.text('Apuntes recientes'), findsOneWidget);
     expect(find.text('Añadir apunte'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Task cards show quick links to linked exam and deliverable',
+      (tester) async {
+    const subjectId = 'linked_task_subject';
+    final subject = Subject(
+      id: subjectId,
+      name: 'Programación',
+      emoji: '💻',
+      colorValue: 0xFF7EA98B,
+    );
+    final task = Task(
+      id: 'linked_task_card',
+      title: 'Tarea con enlaces',
+      subjectId: subjectId,
+      status: TaskStatus.todo,
+      priority: TaskPriority.high,
+      type: TaskType.assignment,
+      dueDate: DateTime(2026, 10, 10),
+      linkedExamId: 'exam_1',
+      linkedDeliverableId: 'delivery_1',
+    );
+
+    final repo = AgendaRepository.instance;
+    if (repo.getSubjectById(subjectId) == null) {
+      await repo.addSubject(subject);
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: TaskCard(task: task),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ver examen'), findsOneWidget);
+    expect(find.text('Ver entrega'), findsOneWidget);
+
+    await tester.tap(find.text('Ver entrega'));
+    await tester.pumpAndSettle();
+    expect(find.text('Entregas y eventos'), findsOneWidget);
+  });
+
+  test('Task and exam relationships persist through JSON serialization', () {
+    final task = Task(
+      id: 'linked_task',
+      title: 'Preparar examen',
+      subjectId: 'prog',
+      status: TaskStatus.todo,
+      priority: TaskPriority.high,
+      type: TaskType.assignment,
+      dueDate: DateTime(2026, 10, 10),
+      linkedExamId: 'exam_1',
+      linkedDeliverableId: 'delivery_1',
+    );
+
+    final exam = Exam(
+      id: 'exam_1',
+      name: 'Parcial de programación',
+      subjectId: 'prog',
+      date: DateTime(2026, 10, 12),
+      time: '10:00',
+      classroom: 'Aula 2',
+      topics: const [ExamTopic(title: 'Modelado', isCompleted: false)],
+      state: ExamState.preparing,
+      linkedNoteIds: const ['note_1', 'note_2'],
+    );
+
+    final restoredTask = Task.fromJson(task.toJson());
+    final restoredExam = Exam.fromJson(exam.toJson());
+
+    expect(restoredTask.linkedExamId, 'exam_1');
+    expect(restoredTask.linkedDeliverableId, 'delivery_1');
+    expect(restoredExam.linkedNoteIds, ['note_1', 'note_2']);
   });
 
   test('Repository CRUD and single source of truth operates correctly',

@@ -65,6 +65,7 @@ class _ExamFormModalState extends State<ExamFormModal> {
   late DateTime _date;
   late ExamState _state;
   late List<ExamTopic> _topics;
+  late List<String> _linkedNoteIds;
 
   bool get isEditing => widget.initialExam != null;
 
@@ -91,6 +92,7 @@ class _ExamFormModalState extends State<ExamFormModal> {
             const ExamTopic(title: 'Tema 1: Introducción', isCompleted: false),
             const ExamTopic(title: 'Tema 2: Desarrollo', isCompleted: false),
           ];
+    _linkedNoteIds = e != null ? List.from(e.linkedNoteIds) : [];
   }
 
   @override
@@ -136,6 +138,7 @@ class _ExamFormModalState extends State<ExamFormModal> {
       notes: _notesController.text.trim().isEmpty
           ? null
           : _notesController.text.trim(),
+      linkedNoteIds: _linkedNoteIds,
     );
 
     if (isEditing) {
@@ -151,6 +154,8 @@ class _ExamFormModalState extends State<ExamFormModal> {
   Widget build(BuildContext context) {
     final repo = AgendaRepository.instance;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final notesForSubject =
+        repo.notes.where((note) => note.subjectId == _subjectId).toList();
 
     return Container(
       decoration: const BoxDecoration(
@@ -225,6 +230,59 @@ class _ExamFormModalState extends State<ExamFormModal> {
                 },
               ),
               const SizedBox(height: 12),
+
+              if (notesForSubject.isNotEmpty) ...[
+                const _FieldLabel('Apuntes relacionados'),
+                const SizedBox(height: 6),
+                DropdownButtonFormField<String?>(
+                  value: null,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Selecciona un apunte para vincular',
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Sin añadir'),
+                    ),
+                    ...notesForSubject.map((note) {
+                      return DropdownMenuItem<String?>(
+                        value: note.id,
+                        child: Text(note.title),
+                      );
+                    }),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+
+                    setState(() {
+                      if (!_linkedNoteIds.contains(value)) {
+                        _linkedNoteIds.add(value);
+                      }
+                    });
+                  },
+                ),
+                if (_linkedNoteIds.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: notesForSubject
+                        .where((note) => _linkedNoteIds.contains(note.id))
+                        .map((note) {
+                      return InputChip(
+                        label: Text(note.title),
+                        onDeleted: () {
+                          setState(() {
+                            _linkedNoteIds.remove(note.id);
+                          });
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ],
+                const SizedBox(height: 12),
+              ],
 
               // Date & Time
               Row(

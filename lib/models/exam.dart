@@ -43,6 +43,7 @@ class Exam {
     required this.topics,
     required this.state,
     this.notes,
+    this.linkedNoteIds = const [],
   });
 
   final String id;
@@ -54,6 +55,7 @@ class Exam {
   final List<ExamTopic> topics;
   final ExamState state;
   final String? notes;
+  final List<String> linkedNoteIds;
 
   String get stateLabel {
     switch (state) {
@@ -103,6 +105,7 @@ class Exam {
     List<ExamTopic>? topics,
     ExamState? state,
     String? notes,
+    List<String>? linkedNoteIds,
   }) {
     return Exam(
       id: id ?? this.id,
@@ -114,6 +117,7 @@ class Exam {
       topics: topics ?? this.topics,
       state: state ?? this.state,
       notes: notes ?? this.notes,
+      linkedNoteIds: linkedNoteIds ?? this.linkedNoteIds,
     );
   }
 
@@ -127,6 +131,7 @@ class Exam {
         'topics': topics.map((t) => t.toJson()).toList(),
         'state': state.name,
         'notes': notes,
+        'linkedNoteIds': linkedNoteIds,
       };
 
   factory Exam.fromJson(Map<String, dynamic> json) => Exam(
@@ -145,5 +150,9 @@ class Exam {
           orElse: () => ExamState.notStarted,
         ),
         notes: json['notes'] as String?,
+        linkedNoteIds: (json['linkedNoteIds'] as List<dynamic>?)
+                ?.map((e) => e as String)
+                .toList() ??
+            const [],
       );
 }

@@ -217,25 +217,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ],
                       const Divider(height: 20),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Restablecer datos de muestra', style: TextStyle(fontWeight: FontWeight.w700, color: CottagecoreColors.terracotta)),
-                        subtitle: const Text('Restaura las materias, tareas y exámenes iniciales'),
-                        trailing: OutlinedButton(
-                          onPressed: () async {
-                            await repo.resetToSampleData();
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Datos de muestra restablecidos 🌱')),
-                              );
-                            }
-                          },
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: CottagecoreColors.terracotta),
-                          ),
-                          child: const Text('Restablecer', style: TextStyle(color: CottagecoreColors.terracotta)),
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -251,7 +232,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       _settingRow(
                         title: 'Versión del Sistema',
-                        subtitle: 'Agenda Cottagecore v1.0.0 (Flutter Multiplataforma)',
+                        subtitle: 'Agenda Cottagecore v1.0.2 (Flutter Multiplataforma)',
                         trailing: const Text('V1 Lista', style: TextStyle(fontWeight: FontWeight.w700, color: CottagecoreColors.forest)),
                       ),
                     ],

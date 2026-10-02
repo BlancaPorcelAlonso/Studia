@@ -16,6 +16,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isSigningUp = false;
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
 
   @override
   void dispose() {
@@ -121,6 +122,36 @@ class _AuthScreenState extends State<AuthScreen> {
                         return null;
                       },
                     ),
+                    if (_isSigningUp) ...[
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        obscureText: _obscureConfirmPassword,
+                        autofillHints: const [AutofillHints.newPassword],
+                        decoration: InputDecoration(
+                          labelText: 'Confirmar contraseña',
+                          suffixIcon: IconButton(
+                            tooltip: _obscureConfirmPassword
+                                ? 'Mostrar confirmación'
+                                : 'Ocultar confirmación',
+                            onPressed: () => setState(() {
+                              _obscureConfirmPassword =
+                                  !_obscureConfirmPassword;
+                            }),
+                            icon: Icon(
+                              _obscureConfirmPassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
+                          ),
+                        ),
+                        validator: (value) {
+                          if (value != _password.text) {
+                            return 'Las contraseñas no coinciden';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
                     const SizedBox(height: 22),
                     FilledButton.icon(
                       onPressed: _isLoading ? null : _submit,

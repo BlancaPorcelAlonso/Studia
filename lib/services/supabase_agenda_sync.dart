@@ -72,9 +72,12 @@ class SupabaseAgendaSync {
               id: row['id'] as String,
               title: row['title'] as String,
               subjectId: row['subject_id'] as String,
-              status: _enumValue(TaskStatus.values, row['status'], TaskStatus.todo),
-              priority: _enumValue(TaskPriority.values, row['priority'], TaskPriority.medium),
-              type: _enumValue(TaskType.values, row['type'], TaskType.assignment),
+              status:
+                  _enumValue(TaskStatus.values, row['status'], TaskStatus.todo),
+              priority: _enumValue(
+                  TaskPriority.values, row['priority'], TaskPriority.medium),
+              type:
+                  _enumValue(TaskType.values, row['type'], TaskType.assignment),
               dueDate: _date(row['due_date']),
               startDate: _optionalDate(row['start_date']),
               completedAt: _optionalDate(row['completed_at']),
@@ -82,6 +85,8 @@ class SupabaseAgendaSync {
               notes: row['notes'] as String?,
               links: linksByTask[row['id']] ?? const [],
               files: filesByTask[row['id']] ?? const [],
+              linkedExamId: row['linked_exam_id'] as String?,
+              linkedDeliverableId: row['linked_deliverable_id'] as String?,
             ))
         .toList();
 
@@ -92,7 +97,8 @@ class SupabaseAgendaSync {
       topics.putIfAbsent(row['exam_id'] as String, () => []).add(row);
     }
     for (final list in topics.values) {
-      list.sort((a, b) => (a['position'] as int).compareTo(b['position'] as int));
+      list.sort(
+          (a, b) => (a['position'] as int).compareTo(b['position'] as int));
     }
     final exams = examRows
         .map((row) => Exam(
@@ -102,7 +108,8 @@ class SupabaseAgendaSync {
               date: _date(row['exam_date']),
               time: row['exam_time'] as String,
               classroom: row['classroom'] as String,
-              state: _enumValue(ExamState.values, row['state'], ExamState.notStarted),
+              state: _enumValue(
+                  ExamState.values, row['state'], ExamState.notStarted),
               notes: row['notes'] as String?,
               topics: (topics[row['id']] ?? const [])
                   .map((topic) => ExamTopic(
@@ -110,6 +117,10 @@ class SupabaseAgendaSync {
                         isCompleted: topic['is_completed'] as bool,
                       ))
                   .toList(),
+              linkedNoteIds: (row['linked_note_ids'] as List<dynamic>?)
+                      ?.map((e) => e as String)
+                      .toList() ??
+                  const [],
             ))
         .toList();
 
@@ -122,7 +133,8 @@ class SupabaseAgendaSync {
       checks.putIfAbsent(row['note_id'] as String, () => []).add(row);
     }
     for (final list in checks.values) {
-      list.sort((a, b) => (a['position'] as int).compareTo(b['position'] as int));
+      list.sort(
+          (a, b) => (a['position'] as int).compareTo(b['position'] as int));
     }
     final tags = _group(tagRows, 'note_id', 'tag');
     final attachments = <String, List<NoteAttachment>>{};
@@ -180,7 +192,8 @@ class SupabaseAgendaSync {
               id: row['id'] as String,
               subjectId: row['subject_id'] as String,
               date: _date(row['absence_date']),
-              status: _enumValue(AbsenceStatus.values, row['status'], AbsenceStatus.pending),
+              status: _enumValue(
+                  AbsenceStatus.values, row['status'], AbsenceStatus.pending),
               note: row['note'] as String?,
             ))
         .toList();
@@ -189,7 +202,8 @@ class SupabaseAgendaSync {
               id: row['id'] as String,
               subjectId: row['subject_id'] as String,
               title: row['title'] as String,
-              type: _enumValue(GradeType.values, row['type'], GradeType.activity),
+              type:
+                  _enumValue(GradeType.values, row['type'], GradeType.activity),
               score: (row['score'] as num).toDouble(),
               maxScore: (row['max_score'] as num).toDouble(),
               date: _date(row['grade_date']),
@@ -226,14 +240,18 @@ class SupabaseAgendaSync {
         'class_schedules',
         'subject_id',
         subject.id,
-        subject.schedules.asMap().entries.map((entry) => {
-          'id': '${subject.id}-schedule-${entry.key}',
-          'user_id': userId,
-          'subject_id': subject.id,
-          'weekday': entry.value.weekday,
-          'start_minutes': entry.value.startMinutes,
-          'duration_minutes': entry.value.durationMinutes,
-        }).toList(),
+        subject.schedules
+            .asMap()
+            .entries
+            .map((entry) => {
+                  'id': '${subject.id}-schedule-${entry.key}',
+                  'user_id': userId,
+                  'subject_id': subject.id,
+                  'weekday': entry.value.weekday,
+                  'start_minutes': entry.value.startMinutes,
+                  'duration_minutes': entry.value.durationMinutes,
+                })
+            .toList(),
       );
     }
   }
@@ -253,30 +271,40 @@ class SupabaseAgendaSync {
         'completed_at': task.completedAt?.toIso8601String(),
         'description': task.description,
         'notes': task.notes,
+        'linked_exam_id': task.linkedExamId,
+        'linked_deliverable_id': task.linkedDeliverableId,
       });
       await _replaceChildren(
         'task_links',
         'task_id',
         task.id,
-        task.links.asMap().entries.map((entry) => {
-          'id': '${task.id}-link-${entry.key}',
-          'user_id': userId,
-          'task_id': task.id,
-          'url': entry.value,
-          'position': entry.key,
-        }).toList(),
+        task.links
+            .asMap()
+            .entries
+            .map((entry) => {
+                  'id': '${task.id}-link-${entry.key}',
+                  'user_id': userId,
+                  'task_id': task.id,
+                  'url': entry.value,
+                  'position': entry.key,
+                })
+            .toList(),
       );
       await _replaceChildren(
         'task_attachments',
         'task_id',
         task.id,
-        task.files.asMap().entries.map((entry) => {
-          'id': '${task.id}-file-${entry.key}',
-          'user_id': userId,
-          'task_id': task.id,
-          'name': entry.value.split(RegExp(r'[/\\]')).last,
-          'storage_path': entry.value,
-        }).toList(),
+        task.files
+            .asMap()
+            .entries
+            .map((entry) => {
+                  'id': '${task.id}-file-${entry.key}',
+                  'user_id': userId,
+                  'task_id': task.id,
+                  'name': entry.value.split(RegExp(r'[/\\]')).last,
+                  'storage_path': entry.value,
+                })
+            .toList(),
       );
     }
   }
@@ -293,19 +321,24 @@ class SupabaseAgendaSync {
         'classroom': exam.classroom,
         'state': exam.state.name,
         'notes': exam.notes,
+        'linked_note_ids': exam.linkedNoteIds,
       });
       await _replaceChildren(
         'exam_topics',
         'exam_id',
         exam.id,
-        exam.topics.asMap().entries.map((entry) => {
-          'id': '${exam.id}-topic-${entry.key}',
-          'user_id': userId,
-          'exam_id': exam.id,
-          'title': entry.value.title,
-          'is_completed': entry.value.isCompleted,
-          'position': entry.key,
-        }).toList(),
+        exam.topics
+            .asMap()
+            .entries
+            .map((entry) => {
+                  'id': '${exam.id}-topic-${entry.key}',
+                  'user_id': userId,
+                  'exam_id': exam.id,
+                  'title': entry.value.title,
+                  'is_completed': entry.value.isCompleted,
+                  'position': entry.key,
+                })
+            .toList(),
       );
     }
   }
@@ -326,21 +359,26 @@ class SupabaseAgendaSync {
         'note_check_items',
         'note_id',
         note.id,
-        note.checklist.asMap().entries.map((entry) => {
-          'id': '${note.id}-check-${entry.key}',
-          'user_id': userId,
-          'note_id': note.id,
-          'text': entry.value.text,
-          'is_checked': entry.value.isChecked,
-          'position': entry.key,
-        }).toList(),
+        note.checklist
+            .asMap()
+            .entries
+            .map((entry) => {
+                  'id': '${note.id}-check-${entry.key}',
+                  'user_id': userId,
+                  'note_id': note.id,
+                  'text': entry.value.text,
+                  'is_checked': entry.value.isChecked,
+                  'position': entry.key,
+                })
+            .toList(),
       );
       await _replaceTags(note);
       final attachmentRows = <Map<String, dynamic>>[];
       for (var index = 0; index < note.attachments.length; index++) {
         final attachment = note.attachments[index];
         if (attachment.bytesBase64.isEmpty) continue;
-        final safeName = attachment.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+        final safeName =
+            attachment.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
         final path = '$userId/notes/${note.id}/$index-$safeName';
         await client.storage.from('agenda-attachments').uploadBinary(
               path,
@@ -360,7 +398,8 @@ class SupabaseAgendaSync {
           'mime_type': attachment.mimeType,
         });
       }
-      await _replaceChildren('note_attachments', 'note_id', note.id, attachmentRows);
+      await _replaceChildren(
+          'note_attachments', 'note_id', note.id, attachmentRows);
     }
   }
 
@@ -473,19 +512,23 @@ class SupabaseAgendaSync {
   ) {
     final result = <String, List<String>>{};
     for (final row in rows) {
-      result.putIfAbsent(row[parentKey] as String, () => []).add(row[valueKey] as String);
+      result
+          .putIfAbsent(row[parentKey] as String, () => [])
+          .add(row[valueKey] as String);
     }
     return result;
   }
 
-  static T _enumValue<T extends Enum>(List<T> values, Object? value, T fallback) {
+  static T _enumValue<T extends Enum>(
+      List<T> values, Object? value, T fallback) {
     for (final option in values) {
       if (option.name == value) return option;
     }
     return fallback;
   }
 
-  static DateTime _date(Object? value) => DateTime.parse(value.toString()).toLocal();
+  static DateTime _date(Object? value) =>
+      DateTime.parse(value.toString()).toLocal();
 
   static DateTime? _optionalDate(Object? value) =>
       value == null ? null : _date(value);

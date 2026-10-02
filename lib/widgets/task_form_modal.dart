@@ -31,7 +31,8 @@ class TaskFormModal extends StatefulWidget {
       await showDialog(
         context: context,
         builder: (ctx) => Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 580, maxHeight: 800),
             child: TaskFormModal(
@@ -74,6 +75,8 @@ class _TaskFormModalState extends State<TaskFormModal> {
   late TaskStatus _status;
   late TaskPriority _priority;
   late TaskType _type;
+  late String? _linkedExamId;
+  late String? _linkedDeliverableId;
   late DateTime _dueDate;
   DateTime? _startDate;
 
@@ -98,7 +101,11 @@ class _TaskFormModalState extends State<TaskFormModal> {
     _status = t?.status ?? widget.initialStatus ?? TaskStatus.todo;
     _priority = t?.priority ?? TaskPriority.medium;
     _type = t?.type ?? TaskType.assignment;
-    _dueDate = t?.dueDate ?? widget.initialDueDate ?? DateTime.now().add(const Duration(days: 2));
+    _linkedExamId = t?.linkedExamId;
+    _linkedDeliverableId = t?.linkedDeliverableId;
+    _dueDate = t?.dueDate ??
+        widget.initialDueDate ??
+        DateTime.now().add(const Duration(days: 2));
     _startDate = t?.startDate;
 
     if (t != null &&
@@ -106,7 +113,9 @@ class _TaskFormModalState extends State<TaskFormModal> {
             (t.notes?.isNotEmpty ?? false) ||
             t.links.isNotEmpty ||
             t.files.isNotEmpty ||
-            t.startDate != null)) {
+            t.startDate != null ||
+            t.linkedExamId != null ||
+            t.linkedDeliverableId != null)) {
       _showExtraDetails = true;
     }
   }
@@ -137,7 +146,8 @@ class _TaskFormModalState extends State<TaskFormModal> {
         .toList();
 
     final task = Task(
-      id: widget.initialTask?.id ?? 'task_${DateTime.now().millisecondsSinceEpoch}',
+      id: widget.initialTask?.id ??
+          'task_${DateTime.now().millisecondsSinceEpoch}',
       title: _titleController.text.trim(),
       subjectId: _subjectId,
       status: _status,
@@ -156,6 +166,8 @@ class _TaskFormModalState extends State<TaskFormModal> {
           : _notesController.text.trim(),
       links: linksList,
       files: filesList,
+      linkedExamId: _linkedExamId,
+      linkedDeliverableId: _linkedDeliverableId,
     );
 
     if (isEditing) {
@@ -285,7 +297,9 @@ class _TaskFormModalState extends State<TaskFormModal> {
                       children: [
                         Text(sub.emoji, style: const TextStyle(fontSize: 16)),
                         const SizedBox(width: 8),
-                        Text(sub.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text(sub.name,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w600)),
                       ],
                     ),
                   );
@@ -310,22 +324,28 @@ class _TaskFormModalState extends State<TaskFormModal> {
                 onTap: _pickDueDate,
                 borderRadius: BorderRadius.circular(14),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                   decoration: BoxDecoration(
                     color: CottagecoreColors.creamDarker,
                     borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: CottagecoreColors.border, width: 0.8),
+                    border:
+                        Border.all(color: CottagecoreColors.border, width: 0.8),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.calendar_month_rounded, color: CottagecoreColors.sage),
+                      const Icon(Icons.calendar_month_rounded,
+                          color: CottagecoreColors.sage),
                       const SizedBox(width: 10),
                       Text(
-                        DateFormat('EEEE, d MMMM yyyy', 'es_ES').format(_dueDate),
+                        DateFormat('EEEE, d MMMM yyyy', 'es_ES')
+                            .format(_dueDate),
                         style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                       const Spacer(),
-                      const Text('Cambiar', style: TextStyle(color: CottagecoreColors.forest, fontSize: 13)),
+                      const Text('Cambiar',
+                          style: TextStyle(
+                              color: CottagecoreColors.forest, fontSize: 13)),
                     ],
                   ),
                 ),
@@ -380,7 +400,8 @@ class _TaskFormModalState extends State<TaskFormModal> {
 
               // "+ Añadir detalles" Toggle
               InkWell(
-                onTap: () => setState(() => _showExtraDetails = !_showExtraDetails),
+                onTap: () =>
+                    setState(() => _showExtraDetails = !_showExtraDetails),
                 borderRadius: BorderRadius.circular(12),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -395,7 +416,9 @@ class _TaskFormModalState extends State<TaskFormModal> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        _showExtraDetails ? 'Ocultar detalles' : '+ Añadir detalles',
+                        _showExtraDetails
+                            ? 'Ocultar detalles'
+                            : '+ Añadir detalles',
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
@@ -440,6 +463,45 @@ class _TaskFormModalState extends State<TaskFormModal> {
                 ),
                 const SizedBox(height: 12),
 
+                DropdownButtonFormField<String?>(
+                  value: _linkedExamId,
+                  decoration: const InputDecoration(
+                      labelText: 'Vincular a examen (opcional)'),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                        value: null, child: Text('Sin examen asociado')),
+                    ...repo.exams
+                        .where((exam) => exam.subjectId == _subjectId)
+                        .map((exam) => DropdownMenuItem<String?>(
+                              value: exam.id,
+                              child: Text(exam.name),
+                            ))
+                        .toList(),
+                  ],
+                  onChanged: (value) => setState(() => _linkedExamId = value),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  value: _linkedDeliverableId,
+                  decoration: const InputDecoration(
+                      labelText: 'Vincular a entrega (opcional)'),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                        value: null, child: Text('Sin entrega asociada')),
+                    ...repo.deliverables
+                        .where((deliverable) =>
+                            deliverable.subjectId == _subjectId)
+                        .map((deliverable) => DropdownMenuItem<String?>(
+                              value: deliverable.id,
+                              child: Text(deliverable.title),
+                            ))
+                        .toList(),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _linkedDeliverableId = value),
+                ),
+                const SizedBox(height: 12),
+
                 // Notes
                 TextFormField(
                   controller: _notesController,
@@ -479,12 +541,14 @@ class _TaskFormModalState extends State<TaskFormModal> {
                 style: FilledButton.styleFrom(
                   backgroundColor: CottagecoreColors.forest,
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
                 ),
                 icon: const Icon(Icons.check_rounded),
                 label: Text(
                   isEditing ? 'Actualizar tarea' : 'Crear tarea',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w700),
                 ),
               ),
             ],
@@ -509,7 +573,9 @@ class _TaskFormModalState extends State<TaskFormModal> {
                 : CottagecoreColors.creamDarker,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isSelected ? CottagecoreColors.sage : CottagecoreColors.border,
+              color: isSelected
+                  ? CottagecoreColors.sage
+                  : CottagecoreColors.border,
               width: isSelected ? 1.8 : 0.8,
             ),
           ),
@@ -518,7 +584,9 @@ class _TaskFormModalState extends State<TaskFormModal> {
             style: TextStyle(
               fontSize: 12,
               fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-              color: isSelected ? CottagecoreColors.forest : const Color(0xFF6B6053),
+              color: isSelected
+                  ? CottagecoreColors.forest
+                  : const Color(0xFF6B6053),
             ),
           ),
         ),
@@ -541,7 +609,9 @@ class _TaskFormModalState extends State<TaskFormModal> {
                 : CottagecoreColors.creamDarker,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isSelected ? CottagecoreColors.sage : CottagecoreColors.border,
+              color: isSelected
+                  ? CottagecoreColors.sage
+                  : CottagecoreColors.border,
               width: isSelected ? 1.8 : 0.8,
             ),
           ),
@@ -550,7 +620,9 @@ class _TaskFormModalState extends State<TaskFormModal> {
             style: TextStyle(
               fontSize: 12,
               fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-              color: isSelected ? CottagecoreColors.forest : const Color(0xFF6B6053),
+              color: isSelected
+                  ? CottagecoreColors.forest
+                  : const Color(0xFF6B6053),
             ),
           ),
         ),

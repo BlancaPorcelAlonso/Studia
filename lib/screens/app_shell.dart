@@ -50,6 +50,7 @@ class _AppShellState extends State<AppShell> {
     final isDesktop = MediaQuery.of(context).size.width >= 900;
 
     if (isDesktop) {
+      final showTaskAction = _desktopIndex != 3;
       return Scaffold(
         body: Row(
           children: [
@@ -67,15 +68,19 @@ class _AppShellState extends State<AppShell> {
             ),
           ],
         ),
-        floatingActionButton: FloatingActionButton.extended(
-          onPressed: () => TaskFormModal.show(context),
-          icon: const Icon(Icons.add_rounded),
-          label: const Text('Nueva tarea', style: TextStyle(fontWeight: FontWeight.w700)),
-        ),
+        floatingActionButton: showTaskAction
+            ? FloatingActionButton.extended(
+                onPressed: () => TaskFormModal.show(context),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Nueva tarea',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+              )
+            : null,
       );
     }
 
     // Mobile layout
+    final showTaskAction = _mobileIndex != 3;
     return Scaffold(
       body: IndexedStack(
         index: _mobileIndex,
@@ -114,11 +119,13 @@ class _AppShellState extends State<AppShell> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => TaskFormModal.show(context),
-        tooltip: 'Crear nueva tarea',
-        child: const Icon(Icons.add_rounded, size: 28),
-      ),
+      floatingActionButton: showTaskAction
+          ? FloatingActionButton(
+              onPressed: () => TaskFormModal.show(context),
+              tooltip: 'Crear nueva tarea',
+              child: const Icon(Icons.add_rounded, size: 28),
+            )
+          : null,
     );
   }
 }
