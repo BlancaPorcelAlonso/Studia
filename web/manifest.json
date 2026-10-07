@@ -1,6 +1,7 @@
 {
   "name": "Studia",
   "short_name": "Studia",
+  "id": "/",
   "description": "Agenda académica para organizar asignaturas, tareas, apuntes, entregas y exámenes.",
   "start_url": "/",
   "scope": "/",

@@ -34,18 +34,21 @@ class NoteAttachment {
     required this.bytesBase64,
     required this.sizeBytes,
     this.mimeType,
+    this.storagePath,
   });
 
   final String name;
   final String bytesBase64;
   final int sizeBytes;
   final String? mimeType;
+  final String? storagePath;
 
   Map<String, dynamic> toJson() => {
         'name': name,
         'bytesBase64': bytesBase64,
         'sizeBytes': sizeBytes,
         'mimeType': mimeType,
+        'storagePath': storagePath,
       };
 
   factory NoteAttachment.fromJson(Map<String, dynamic> json) => NoteAttachment(
@@ -53,6 +56,7 @@ class NoteAttachment {
         bytesBase64: json['bytesBase64'] as String,
         sizeBytes: json['sizeBytes'] as int? ?? 0,
         mimeType: json['mimeType'] as String?,
+        storagePath: json['storagePath'] as String?,
       );
 }
 

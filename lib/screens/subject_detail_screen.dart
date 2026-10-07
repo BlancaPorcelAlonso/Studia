@@ -1,20 +1,21 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart';
-import 'package:open_filex/open_filex.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/models.dart';
 import '../services/agenda_repository.dart';
 import '../theme/cottagecore_theme.dart';
 import '../widgets/empty_botanical_state.dart';
+import '../widgets/deliverable_form_modal.dart';
 import '../widgets/exam_form_modal.dart';
 import '../widgets/note_form_modal.dart';
 import '../widgets/priority_badge.dart';
 import '../widgets/subject_form_modal.dart';
 import '../widgets/task_card.dart';
 import '../widgets/task_form_modal.dart';
+import '../widgets/attachment_preview_dialog.dart';
 
 class SubjectDetailScreen extends StatefulWidget {
   const SubjectDetailScreen({
@@ -709,18 +710,40 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
   ) {
     final sorted = List<Deliverable>.from(deliverables)
       ..sort((a, b) => a.date.compareTo(b.date));
+    final pendingCount = sorted.where((d) => !d.isSubmitted).length;
+    final submittedCount = sorted.where((d) => d.isSubmitted).length;
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
           Row(
             children: [
-              const Expanded(
-                  child: Text('Entregas y eventos',
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Entregas y eventos',
                       style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: CottagecoreColors.forest))),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: CottagecoreColors.forest,
+                      ),
+                    ),
+                    if (sorted.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        '$pendingCount pendientes · $submittedCount entregadas',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF7A6F62),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
               FilledButton.icon(
                 onPressed: () => _showDeliverableDialog(context, subject),
                 style: FilledButton.styleFrom(
@@ -747,45 +770,140 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
                     itemBuilder: (context, index) {
                       final item = sorted[index];
                       return Card(
-                        child: ListTile(
-                          leading: Icon(
-                              item.isSubmitted
-                                  ? Icons.event_available_rounded
-                                  : Icons.event_outlined,
-                              color: item.isSubmitted
-                                  ? CottagecoreColors.calmGreen
-                                  : subject.color),
-                          title: Text(item.title,
-                              style: TextStyle(
-                                  decoration: item.isSubmitted
-                                      ? TextDecoration.lineThrough
-                                      : null)),
-                          subtitle: Text(
-                              '${DateFormat('EEEE d MMM yyyy', 'es_ES').format(item.date)}${item.description == null ? '' : ' · ${item.description}'}'),
-                          trailing: PopupMenuButton<String>(
-                            onSelected: (value) {
-                              if (value == 'toggle') {
-                                AgendaRepository.instance.updateDeliverable(item
-                                    .copyWith(isSubmitted: !item.isSubmitted));
-                              } else if (value == 'edit') {
-                                _showDeliverableDialog(context, subject,
-                                    initial: item);
-                              } else {
-                                AgendaRepository.instance
-                                    .deleteDeliverable(item.id);
-                              }
-                            },
-                            itemBuilder: (_) => [
-                              PopupMenuItem(
-                                  value: 'toggle',
-                                  child: Text(item.isSubmitted
-                                      ? 'Marcar pendiente'
-                                      : 'Marcar entregada')),
-                              const PopupMenuItem(
-                                  value: 'edit', child: Text('Editar')),
-                              const PopupMenuItem(
-                                  value: 'delete', child: Text('Eliminar')),
-                            ],
+                        color: item.isSubmitted
+                            ? const Color(0xFFF7FAF6)
+                            : CottagecoreColors.creamCard,
+                        child: InkWell(
+                          onTap: () => _showDeliverableDialog(context, subject,
+                              initial: item),
+                          borderRadius: BorderRadius.circular(16),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                            child: Row(
+                              children: [
+                                // Checkbox de entrega visible directamente
+                                IconButton(
+                                  icon: Icon(
+                                    item.isSubmitted
+                                        ? Icons.check_circle_rounded
+                                        : Icons.radio_button_unchecked_rounded,
+                                    color: item.isSubmitted
+                                        ? CottagecoreColors.forest
+                                        : subject.color,
+                                    size: 22,
+                                  ),
+                                  tooltip: item.isSubmitted
+                                      ? 'Marcar como pendiente'
+                                      : 'Marcar como entregada',
+                                  onPressed: () {
+                                    AgendaRepository.instance
+                                        .toggleDeliverableSubmitted(item.id);
+                                  },
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        item.title,
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: item.isSubmitted
+                                              ? const Color(0xFF8B948A)
+                                              : CottagecoreColors.forest,
+                                          decoration: item.isSubmitted
+                                              ? TextDecoration.lineThrough
+                                              : null,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        '${DateFormat('EEEE d MMM yyyy', 'es_ES').format(item.date)}${item.description == null ? '' : ' · ${item.description}'}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: item.isSubmitted
+                                              ? const Color(0xFFA09B92)
+                                              : const Color(0xFF7A6F62),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                // Chip de estado visible
+                                InkWell(
+                                  onTap: () {
+                                    AgendaRepository.instance
+                                        .toggleDeliverableSubmitted(item.id);
+                                  },
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 10, vertical: 5),
+                                    decoration: BoxDecoration(
+                                      color: item.isSubmitted
+                                          ? CottagecoreColors.sage
+                                              .withValues(alpha: 0.2)
+                                          : CottagecoreColors.terracotta
+                                              .withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: item.isSubmitted
+                                            ? CottagecoreColors.sage
+                                            : CottagecoreColors.terracotta
+                                                .withValues(alpha: 0.4),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      item.isSubmitted
+                                          ? 'Entregada ✓'
+                                          : 'Pendiente',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w700,
+                                        color: item.isSubmitted
+                                            ? CottagecoreColors.forest
+                                            : CottagecoreColors.terracotta,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                PopupMenuButton<String>(
+                                  onSelected: (value) {
+                                    if (value == 'toggle') {
+                                      AgendaRepository.instance
+                                          .toggleDeliverableSubmitted(item.id);
+                                    } else if (value == 'edit') {
+                                      _showDeliverableDialog(context, subject,
+                                          initial: item);
+                                    } else if (value == 'delete') {
+                                      AgendaRepository.instance
+                                          .deleteDeliverable(item.id);
+                                    }
+                                  },
+                                  itemBuilder: (_) => [
+                                    PopupMenuItem(
+                                      value: 'toggle',
+                                      child: Text(item.isSubmitted
+                                          ? 'Marcar como pendiente'
+                                          : 'Marcar como entregada'),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'edit',
+                                      child: Text('Editar entrega'),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'delete',
+                                      child: Text('Eliminar'),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       );
@@ -802,262 +920,11 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
     Subject subject, {
     Deliverable? initial,
   }) async {
-    var title = initial?.title ?? '';
-    var notes = initial?.description ?? '';
-    final subjects = AgendaRepository.instance.subjects;
-    var selectedSubjectId = initial?.subjectId ?? subject.id;
-    var date = initial?.date ?? DateTime.now().add(const Duration(days: 7));
-    final formKey = GlobalKey<FormState>();
-    final isDesktop = MediaQuery.of(context).size.width >= 700;
-
-    Widget buildForm(BuildContext formContext) => StatefulBuilder(
-          builder: (formContext, setFormState) {
-            final bottomInset = MediaQuery.of(formContext).viewInsets.bottom;
-            return Container(
-              decoration: const BoxDecoration(
-                color: CottagecoreColors.creamCard,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              padding: EdgeInsets.fromLTRB(20, 16, 20, bottomInset + 20),
-              child: Form(
-                key: formKey,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Center(
-                        child: Container(
-                          width: 44,
-                          height: 5,
-                          decoration: BoxDecoration(
-                            color: CottagecoreColors.border,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Text(
-                            initial == null
-                                ? '📅 Nueva entrega'
-                                : '✏️ Editar entrega',
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              color: CottagecoreColors.forest,
-                            ),
-                          ),
-                          const Spacer(),
-                          IconButton(
-                            tooltip: 'Cerrar',
-                            icon: const Icon(Icons.close_rounded),
-                            onPressed: () => Navigator.pop(formContext),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-                      const Text(
-                        'Nombre de la entrega',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: CottagecoreColors.warmBrown,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      TextFormField(
-                        initialValue: title,
-                        autofocus: initial == null,
-                        onChanged: (value) => title = value,
-                        decoration: const InputDecoration(
-                          hintText: 'Ej. Proyecto final',
-                        ),
-                        validator: (value) =>
-                            value == null || value.trim().isEmpty
-                                ? 'Escribe el nombre de la entrega'
-                                : null,
-                      ),
-                      const SizedBox(height: 14),
-                      const Text(
-                        'Asignatura',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: CottagecoreColors.warmBrown,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      DropdownButtonFormField<String>(
-                        initialValue: selectedSubjectId.isNotEmpty
-                            ? selectedSubjectId
-                            : null,
-                        decoration: const InputDecoration(),
-                        items: subjects
-                            .map((item) => DropdownMenuItem(
-                                  value: item.id,
-                                  child: Row(
-                                    children: [
-                                      Text(item.emoji,
-                                          style: const TextStyle(fontSize: 16)),
-                                      const SizedBox(width: 8),
-                                      Text(item.name,
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.w600)),
-                                    ],
-                                  ),
-                                ))
-                            .toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            setFormState(() => selectedSubjectId = value);
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 14),
-                      const Text(
-                        'Fecha',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: CottagecoreColors.warmBrown,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      InkWell(
-                        onTap: () async {
-                          final picked = await showDatePicker(
-                            context: formContext,
-                            initialDate: date,
-                            firstDate: DateTime.now()
-                                .subtract(const Duration(days: 365)),
-                            lastDate:
-                                DateTime.now().add(const Duration(days: 730)),
-                            builder: (context, child) => Theme(
-                              data: Theme.of(context).copyWith(
-                                colorScheme: const ColorScheme.light(
-                                  primary: CottagecoreColors.sage,
-                                  onPrimary: Colors.white,
-                                  surface: CottagecoreColors.creamCard,
-                                ),
-                              ),
-                              child: child!,
-                            ),
-                          );
-                          if (picked != null) {
-                            setFormState(() => date = picked);
-                          }
-                        },
-                        borderRadius: BorderRadius.circular(14),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16, vertical: 14),
-                          decoration: BoxDecoration(
-                            color: CottagecoreColors.creamDarker,
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                                color: CottagecoreColors.border, width: 0.8),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.calendar_month_rounded,
-                                  color: CottagecoreColors.sage),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  DateFormat('EEEE, d MMMM yyyy', 'es_ES')
-                                      .format(date),
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w600),
-                                ),
-                              ),
-                              const Text('Cambiar',
-                                  style: TextStyle(
-                                      color: CottagecoreColors.forest,
-                                      fontSize: 13)),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        initialValue: notes,
-                        minLines: 2,
-                        maxLines: 3,
-                        onChanged: (value) => notes = value,
-                        decoration: const InputDecoration(
-                          labelText: 'Notas adicionales',
-                          hintText: 'Instrucciones, formato o detalles...',
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      FilledButton.icon(
-                        onPressed: () {
-                          if (!formKey.currentState!.validate()) return;
-                          Navigator.pop(formContext, (
-                            name: title.trim(),
-                            subjectId: selectedSubjectId,
-                            date: date,
-                            notes: notes.trim(),
-                          ));
-                        },
-                        style: FilledButton.styleFrom(
-                          backgroundColor: CottagecoreColors.forest,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16)),
-                        ),
-                        icon: const Icon(Icons.check_rounded),
-                        label: Text(
-                          initial == null ? 'Crear entrega' : 'Guardar cambios',
-                          style: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-
-    final result = isDesktop
-        ? await showDialog<
-            ({String name, String subjectId, DateTime date, String notes})?>(
-            context: context,
-            builder: (dialogContext) => Dialog(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24)),
-              child: ConstrainedBox(
-                constraints:
-                    const BoxConstraints(maxWidth: 580, maxHeight: 800),
-                child: buildForm(dialogContext),
-              ),
-            ),
-          )
-        : await showModalBottomSheet<
-            ({String name, String subjectId, DateTime date, String notes})?>(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-            builder: buildForm,
-          );
-    if (result == null) return;
-    final item = Deliverable(
-      id: initial?.id ?? 'delivery_${DateTime.now().microsecondsSinceEpoch}',
-      subjectId: result.subjectId,
-      title: result.name,
-      description: result.notes.isEmpty ? null : result.notes,
-      date: result.date,
-      isSubmitted: initial?.isSubmitted ?? false,
+    await DeliverableFormModal.show(
+      context,
+      initialDeliverable: initial,
+      initialSubjectId: subject.id,
     );
-    if (initial == null) {
-      await AgendaRepository.instance.addDeliverable(item);
-    } else {
-      await AgendaRepository.instance.updateDeliverable(item);
-    }
   }
 
   Widget _buildProgressTab(
@@ -1123,45 +990,37 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
                   style: TextStyle(color: Color(0xFF7A6F62))))
         else
           ...sortedAbsences.map((absence) => Card(
-                child: ListTile(
-                  leading: const Icon(Icons.event_busy_outlined,
-                      color: CottagecoreColors.terracotta),
-                  title: Text(DateFormat('EEEE d MMM yyyy', 'es_ES')
-                      .format(absence.date)),
-                  subtitle: absence.note == null ? null : Text(absence.note!),
-                  trailing: SizedBox(
-                    width: 154,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Expanded(
-                          child: DropdownButton<AbsenceStatus>(
-                            isExpanded: true,
-                            value: absence.status,
-                            underline: const SizedBox.shrink(),
-                            items: AbsenceStatus.values
-                                .map((status) => DropdownMenuItem(
-                                    value: status,
-                                    child: Text(_absenceLabel(status),
-                                        overflow: TextOverflow.ellipsis)))
-                                .toList(),
-                            onChanged: (status) {
-                              if (status != null) {
-                                AgendaRepository.instance.updateAbsence(
-                                    absence.copyWith(status: status));
-                              }
-                            },
-                          ),
-                        ),
-                        IconButton(
-                            tooltip: 'Eliminar ausencia',
-                            onPressed: () => AgendaRepository.instance
-                                .deleteAbsence(absence.id),
-                            icon: const Icon(Icons.delete_outline_rounded,
-                                size: 19)),
-                      ],
+                child: _progressRecordContent(
+                  subject: subject,
+                  icon: Icons.event_busy_outlined,
+                  title: DateFormat('EEEE d MMM yyyy', 'es_ES')
+                      .format(absence.date),
+                  subtitle: absence.note,
+                  actions: [
+                    DropdownButton<AbsenceStatus>(
+                      isDense: true,
+                      value: absence.status,
+                      underline: const SizedBox.shrink(),
+                      items: AbsenceStatus.values
+                          .map((status) => DropdownMenuItem(
+                              value: status,
+                              child: Text(_absenceLabel(status),
+                                  overflow: TextOverflow.ellipsis)))
+                          .toList(),
+                      onChanged: (status) {
+                        if (status != null) {
+                          AgendaRepository.instance.updateAbsence(
+                              absence.copyWith(status: status));
+                        }
+                      },
                     ),
-                  ),
+                    IconButton(
+                      tooltip: 'Eliminar ausencia',
+                      onPressed: () =>
+                          AgendaRepository.instance.deleteAbsence(absence.id),
+                      icon: const Icon(Icons.delete_outline_rounded, size: 19),
+                    ),
+                  ],
                 ),
               )),
         const Divider(height: 28),
@@ -1184,33 +1043,79 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
                   style: TextStyle(color: Color(0xFF7A6F62))))
         else
           ...sortedGrades.map((grade) => Card(
-                child: ListTile(
-                  leading: Icon(
-                      grade.type == GradeType.exam
-                          ? Icons.school_outlined
-                          : Icons.assignment_outlined,
-                      color: subject.color),
-                  title: Text(grade.title),
-                  subtitle: Text(
-                      '${grade.type == GradeType.exam ? 'Examen' : 'Actividad'} · ${DateFormat('d MMM yyyy', 'es_ES').format(grade.date)}'),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('${grade.score}/${grade.maxScore}',
-                          style: const TextStyle(fontWeight: FontWeight.w700)),
-                      IconButton(
-                          tooltip: 'Eliminar nota',
-                          onPressed: () =>
-                              AgendaRepository.instance.deleteGrade(grade.id),
-                          icon: const Icon(Icons.delete_outline_rounded,
-                              size: 19)),
-                    ],
-                  ),
+                child: _progressRecordContent(
+                  subject: subject,
+                  icon: grade.type == GradeType.exam
+                      ? Icons.school_outlined
+                      : Icons.assignment_outlined,
+                  title: grade.title,
+                  subtitle:
+                      '${grade.type == GradeType.exam ? 'Examen' : 'Actividad'} · ${DateFormat('d MMM yyyy', 'es_ES').format(grade.date)}',
+                  actions: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Text(
+                        '${grade.score}/${grade.maxScore}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Eliminar nota',
+                      onPressed: () =>
+                          AgendaRepository.instance.deleteGrade(grade.id),
+                      icon: const Icon(Icons.delete_outline_rounded, size: 19),
+                    ),
+                  ],
                 ),
               )),
       ],
     );
   }
+
+  Widget _progressRecordContent({
+    required Subject subject,
+    required IconData icon,
+    required String title,
+    required String? subtitle,
+    required List<Widget> actions,
+  }) =>
+      Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          border: Border(left: BorderSide(color: subject.color, width: 5)),
+        ),
+        padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: subject.color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: subject.color, size: 20),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                  if (subtitle != null && subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(subtitle,
+                        style: const TextStyle(
+                            fontSize: 12, color: Color(0xFF7A6F62))),
+                  ],
+                ],
+              ),
+            ),
+            ...actions,
+          ],
+        ),
+      );
 
   String _absenceLabel(AbsenceStatus status) => switch (status) {
         AbsenceStatus.pending => 'Pendiente',
@@ -1398,35 +1303,31 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
   }
 
   Future<void> _openAttachment(NoteAttachment attachment) async {
-    if (attachment.bytesBase64.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text(
-                  'Este archivo no está disponible para abrirse directamente.')),
-        );
-      }
-      return;
-    }
-
-    final tempDir = await Directory.systemTemp.createTemp('agenda_open_');
-    final safeName =
-        attachment.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-    final file = File('${tempDir.path}/$safeName');
-    await file.writeAsBytes(base64Decode(attachment.bytesBase64));
-
-    final result = await OpenFilex.open(file.path);
-    if (mounted && result.type != ResultType.done) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No se pudo abrir ${attachment.name}.')),
-      );
-    }
+    await AttachmentPreviewDialog.show(
+      context,
+      fileName: attachment.name,
+      loadBytes: () async {
+        if (attachment.bytesBase64.isNotEmpty) {
+          return Uint8List.fromList(base64Decode(attachment.bytesBase64));
+        }
+        final path = attachment.storagePath;
+        if (path == null) throw StateError('El archivo no está disponible.');
+        return Supabase.instance.client.storage
+            .from('agenda-attachments')
+            .download(path);
+      },
+    );
   }
 
   Future<void> _downloadAttachment(NoteAttachment attachment) async {
+    final bytes = attachment.bytesBase64.isNotEmpty
+        ? Uint8List.fromList(base64Decode(attachment.bytesBase64))
+        : await Supabase.instance.client.storage
+            .from('agenda-attachments')
+            .download(attachment.storagePath!);
     await FilePicker.saveFile(
       fileName: attachment.name,
-      bytes: Uint8List.fromList(base64Decode(attachment.bytesBase64)),
+      bytes: bytes,
     );
   }
 
@@ -1530,7 +1431,13 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
                           onTap: () =>
                               NoteFormModal.show(context, initialNote: note),
                           borderRadius: BorderRadius.circular(18),
-                          child: Padding(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border(
+                                left: BorderSide(color: subject.color, width: 5),
+                              ),
+                            ),
                             padding: const EdgeInsets.all(16.0),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,

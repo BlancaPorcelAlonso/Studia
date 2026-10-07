@@ -65,8 +65,20 @@ class SupabaseAgendaSync {
     final taskRows = await _rows('tasks');
     final taskLinks = await _rows('task_links');
     final taskAttachments = await _rows('task_attachments');
+    List<Map<String, dynamic>> taskCheckRows = const [];
+    try {
+      taskCheckRows = await _rows('task_check_items');
+    } catch (_) {}
+    final checksByTask = <String, List<Map<String, dynamic>>>{};
+    for (final row in taskCheckRows) {
+      checksByTask.putIfAbsent(row['task_id'] as String, () => []).add(row);
+    }
+    for (final list in checksByTask.values) {
+      list.sort(
+          (a, b) => (a['position'] as int).compareTo(b['position'] as int));
+    }
     final linksByTask = _group(taskLinks, 'task_id', 'url');
-    final filesByTask = _group(taskAttachments, 'task_id', 'name');
+    final filesByTask = _group(taskAttachments, 'task_id', 'storage_path');
     final tasks = taskRows
         .map((row) => Task(
               id: row['id'] as String,
@@ -85,6 +97,13 @@ class SupabaseAgendaSync {
               notes: row['notes'] as String?,
               links: linksByTask[row['id']] ?? const [],
               files: filesByTask[row['id']] ?? const [],
+              checklist: (checksByTask[row['id']] ?? const [])
+                  .map((c) => TaskCheckItem(
+                        id: c['id'] as String,
+                        text: c['text'] as String,
+                        isChecked: c['is_checked'] as bool? ?? false,
+                      ))
+                  .toList(),
               linkedExamId: row['linked_exam_id'] as String?,
               linkedDeliverableId: row['linked_deliverable_id'] as String?,
             ))
@@ -139,21 +158,13 @@ class SupabaseAgendaSync {
     final tags = _group(tagRows, 'note_id', 'tag');
     final attachments = <String, List<NoteAttachment>>{};
     for (final row in attachmentRows) {
-      var bytesBase64 = '';
-      try {
-        final bytes = await client.storage
-            .from('agenda-attachments')
-            .download(row['storage_path'] as String);
-        bytesBase64 = base64Encode(bytes);
-      } catch (_) {
-        // Keep the note available if an attachment is missing from Storage.
-      }
       attachments.putIfAbsent(row['note_id'] as String, () => []).add(
             NoteAttachment(
               name: row['name'] as String,
-              bytesBase64: bytesBase64,
+              bytesBase64: '',
               sizeBytes: (row['size_bytes'] as num?)?.toInt() ?? 0,
               mimeType: row['mime_type'] as String?,
+              storagePath: row['storage_path'] as String,
             ),
           );
     }
@@ -177,6 +188,17 @@ class SupabaseAgendaSync {
             ))
         .toList();
 
+    List<Map<String, dynamic>> deliverableAttachmentRows = const [];
+    try {
+      deliverableAttachmentRows = await _rows('deliverable_attachments');
+    } catch (_) {}
+    final deliverableAttachments = <String, List<Map<String, dynamic>>>{};
+    for (final row in deliverableAttachmentRows) {
+      deliverableAttachments
+          .putIfAbsent(row['deliverable_id'] as String, () => [])
+          .add(row);
+    }
+
     final deliverables = (await _rows('deliverables'))
         .map((row) => Deliverable(
               id: row['id'] as String,
@@ -185,6 +207,17 @@ class SupabaseAgendaSync {
               date: _date(row['due_date']),
               description: row['description'] as String?,
               isSubmitted: row['is_submitted'] as bool,
+              attachments: (deliverableAttachments[row['id'] as String] ??
+                      const <Map<String, dynamic>>[])
+                  .map((attachment) => NoteAttachment(
+                        name: attachment['name'] as String,
+                        bytesBase64: '',
+                        sizeBytes:
+                            (attachment['size_bytes'] as num?)?.toInt() ?? 0,
+                        mimeType: attachment['mime_type'] as String?,
+                        storagePath: attachment['storage_path'] as String,
+                      ))
+                  .toList(),
             ))
         .toList();
     final absences = (await _rows('subject_absences'))
@@ -306,6 +339,29 @@ class SupabaseAgendaSync {
                 })
             .toList(),
       );
+      try {
+        await _replaceChildren(
+          'task_check_items',
+          'task_id',
+          task.id,
+          task.checklist
+              .asMap()
+              .entries
+              .map((entry) => {
+                    'id': entry.value.id.isNotEmpty
+                        ? entry.value.id
+                        : '${task.id}-check-${entry.key}',
+                    'user_id': userId,
+                    'task_id': task.id,
+                    'text': entry.value.text,
+                    'is_checked': entry.value.isChecked,
+                    'position': entry.key,
+                  })
+              .toList(),
+        );
+      } catch (_) {
+        // Ignored if table hasn't been migrated yet
+      }
     }
   }
 
@@ -376,18 +432,21 @@ class SupabaseAgendaSync {
       final attachmentRows = <Map<String, dynamic>>[];
       for (var index = 0; index < note.attachments.length; index++) {
         final attachment = note.attachments[index];
-        if (attachment.bytesBase64.isEmpty) continue;
-        final safeName =
-            attachment.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-        final path = '$userId/notes/${note.id}/$index-$safeName';
-        await client.storage.from('agenda-attachments').uploadBinary(
-              path,
-              base64Decode(attachment.bytesBase64),
-              fileOptions: FileOptions(
-                upsert: true,
-                contentType: attachment.mimeType,
-              ),
-            );
+        var path = attachment.storagePath;
+        if (attachment.bytesBase64.isNotEmpty) {
+          final safeName =
+              attachment.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+          path = '$userId/notes/${note.id}/$index-$safeName';
+          await client.storage.from('agenda-attachments').uploadBinary(
+                path,
+                base64Decode(attachment.bytesBase64),
+                fileOptions: FileOptions(
+                  upsert: true,
+                  contentType: attachment.mimeType,
+                ),
+              );
+        }
+        if (path == null) continue;
         attachmentRows.add({
           'id': '${note.id}-attachment-$index',
           'user_id': userId,
@@ -414,6 +473,36 @@ class SupabaseAgendaSync {
         'description': item.description,
         'is_submitted': item.isSubmitted,
       });
+      final attachmentRows = <Map<String, dynamic>>[];
+      for (var index = 0; index < item.attachments.length; index++) {
+        final attachment = item.attachments[index];
+        var path = attachment.storagePath;
+        if (attachment.bytesBase64.isNotEmpty) {
+          final safeName =
+              attachment.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+          path = '$userId/deliverables/${item.id}/$index-$safeName';
+          await client.storage.from('agenda-attachments').uploadBinary(
+                path,
+                base64Decode(attachment.bytesBase64),
+                fileOptions: FileOptions(
+                  upsert: true,
+                  contentType: attachment.mimeType,
+                ),
+              );
+        }
+        if (path == null) continue;
+        attachmentRows.add({
+          'id': '${item.id}-attachment-$index',
+          'user_id': userId,
+          'deliverable_id': item.id,
+          'name': attachment.name,
+          'storage_path': path,
+          'size_bytes': attachment.sizeBytes,
+          'mime_type': attachment.mimeType,
+        });
+      }
+      await _replaceChildren(
+          'deliverable_attachments', 'deliverable_id', item.id, attachmentRows);
     }
   }
 
@@ -453,6 +542,7 @@ class SupabaseAgendaSync {
     for (final table in [
       'subjects',
       'tasks',
+      'task_check_items',
       'exams',
       'study_notes',
       'deliverables',
@@ -514,7 +604,7 @@ class SupabaseAgendaSync {
     for (final row in rows) {
       result
           .putIfAbsent(row[parentKey] as String, () => [])
-          .add(row[valueKey] as String);
+          .add(row[valueKey] as String? ?? row['name'] as String);
     }
     return result;
   }

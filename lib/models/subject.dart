@@ -142,4 +142,72 @@ class Subject {
             ? DateTime.tryParse(json['lastStudyAt'] as String)
             : null,
       );
+
+  static List<ClassScheduleEntry> getSortedClassesForDate(
+    Iterable<Subject> subjects,
+    DateTime date,
+  ) {
+    final dayNames = switch (date.weekday) {
+      DateTime.monday => ['lunes', 'lun'],
+      DateTime.tuesday => ['martes', 'mar'],
+      DateTime.wednesday => ['miércoles', 'miercoles', 'mié', 'mie'],
+      DateTime.thursday => ['jueves', 'jue'],
+      DateTime.friday => ['viernes', 'vie'],
+      DateTime.saturday => ['sábado', 'sabado', 'sáb', 'sab'],
+      DateTime.sunday => ['domingo', 'dom'],
+      _ => const <String>[],
+    };
+
+    final list = <ClassScheduleEntry>[];
+    for (final subject in subjects) {
+      if (subject.schedules.isNotEmpty) {
+        for (final s in subject.schedules) {
+          if (s.weekday == date.weekday) {
+            list.add(ClassScheduleEntry(
+              subject: subject,
+              startMinutes: s.startMinutes,
+              durationMinutes: s.durationMinutes,
+              timeLabel: s.timeLabel,
+            ));
+          }
+        }
+      } else if (subject.schedule != null &&
+          subject.schedule!.trim().isNotEmpty) {
+        final text = subject.schedule!.toLowerCase();
+        if (dayNames.any(text.contains)) {
+          final parsed = ClassSchedule.parseTime(subject.schedule!);
+          final startMin = parsed ?? (23 * 60 + 59);
+          final label = parsed != null
+              ? '${(parsed ~/ 60).toString().padLeft(2, '0')}:${(parsed % 60).toString().padLeft(2, '0')}'
+              : 'Hora por confirmar';
+          list.add(ClassScheduleEntry(
+            subject: subject,
+            startMinutes: startMin,
+            durationMinutes: 60,
+            timeLabel: label,
+          ));
+        }
+      }
+    }
+
+    list.sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
+    return list;
+  }
 }
+
+class ClassScheduleEntry {
+  const ClassScheduleEntry({
+    required this.subject,
+    required this.startMinutes,
+    required this.durationMinutes,
+    required this.timeLabel,
+  });
+
+  final Subject subject;
+  final int startMinutes;
+  final int durationMinutes;
+  final String timeLabel;
+
+  String get displayFormat => '$timeLabel — ${subject.name}';
+}
+

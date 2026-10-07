@@ -3,7 +3,9 @@ import 'package:intl/intl.dart';
 import '../models/models.dart';
 import '../services/agenda_repository.dart';
 import '../theme/cottagecore_theme.dart';
+import '../widgets/deliverable_form_modal.dart';
 import '../widgets/empty_botanical_state.dart';
+import '../widgets/exam_form_modal.dart';
 import '../widgets/task_card.dart';
 import '../widgets/task_form_modal.dart';
 
@@ -18,6 +20,13 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   DateTime _selectedDate = DateTime.now();
+  final ScrollController _upcomingController = ScrollController();
+
+  @override
+  void dispose() {
+    _upcomingController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,25 +42,33 @@ class _HomeScreenState extends State<HomeScreen> {
         final deliverables = repo.deliverables;
 
         // Calculations for sections
-        final todayTasks =
-            tasks.where((t) => DateUtils.isSameDay(t.dueDate, now)).toList();
-        final selectedDayTasks = tasks
-            .where((t) => DateUtils.isSameDay(t.dueDate, _selectedDate))
-            .toList();
         final todayDate = DateUtils.dateOnly(now);
+        final selectedDateOnly = DateUtils.dateOnly(_selectedDate);
 
-        final upcomingTasks = tasks
-            .where((t) =>
-                t.status != TaskStatus.completed &&
-                t.dueDate.isAfter(now) &&
-                t.dueDate.difference(now).inDays <= 7)
-            .toList()
+        // Hoy: exclusivamente tareas cuya fecha coincida exactamente con hoy
+        final todayTasks = tasks
+            .where((t) => DateUtils.dateOnly(t.dueDate) == todayDate)
+            .toList();
+
+        final selectedDayTasks = tasks
+            .where((t) => DateUtils.dateOnly(t.dueDate) == selectedDateOnly)
+            .toList();
+
+        // Próximamente: estrictamente a partir de mañana (sin duplicados con Hoy) y hasta 7 días vista
+        final upcomingTasks = tasks.where((t) {
+          if (t.status == TaskStatus.completed) return false;
+          final taskDate = DateUtils.dateOnly(t.dueDate);
+          return taskDate.isAfter(todayDate) &&
+              taskDate.difference(todayDate).inDays <= 7;
+        }).toList()
           ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
 
         final upcomingExams = exams
             .where((exam) => !DateUtils.dateOnly(exam.date).isBefore(todayDate))
             .toList()
           ..sort((a, b) => a.date.compareTo(b.date));
+
+        // Entregas próximas: solo pendientes (no entregadas) a partir de hoy
         final upcomingDeliverables = deliverables
             .where((item) =>
                 !item.isSubmitted &&
@@ -73,19 +90,15 @@ class _HomeScreenState extends State<HomeScreen> {
         final upcomingExamsCount = exams
             .where((e) => e.date.isAfter(now.subtract(const Duration(days: 1))))
             .length;
-        final thisWeekCount = tasks.where((t) {
-          final diff = t.dueDate.difference(now).inDays;
-          return diff >= 0 && diff <= 7 && t.status != TaskStatus.completed;
+        final thisWeekCount = deliverables.where((item) {
+          final dueDate = DateUtils.dateOnly(item.date);
+          return !item.isSubmitted &&
+              !dueDate.isBefore(todayDate) &&
+              dueDate.difference(todayDate).inDays <= 7;
         }).length;
 
-        // Schedule of today from subjects
-        final currentWeekdayName =
-            DateFormat('EEEE', 'es_ES').format(now).toLowerCase();
-        final todaySubjects = subjects.where((s) {
-          if (s.schedule == null) return false;
-          final sched = s.schedule!.toLowerCase();
-          return sched.contains(currentWeekdayName.substring(0, 3));
-        }).toList();
+        // Clases de hoy ordenadas estrictamente de forma cronológica por hora de inicio
+        final todayClasses = Subject.getSortedClassesForDate(subjects, now);
 
         final isWide = MediaQuery.of(context).size.width >= 900;
 
@@ -158,88 +171,80 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   // Desktop 2-column or Mobile stacked
                   if (isWide)
-                    IntrinsicHeight(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Expanded(
-                            flex: 3,
-                            child: SizedBox(
-                              key: const ValueKey('home-left-column'),
-                              child: Column(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _dashboardSection(
-                                    _buildTodaySection(
-                                      todayTasks.take(3).toList(),
-                                      todaySubjects,
-                                    ),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 6,
+                          child: SizedBox(
+                            key: const ValueKey('home-left-column'),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _dashboardSection(
+                                  _buildTodaySection(
+                                    todayTasks,
+                                    todayClasses,
                                   ),
-                                  const SizedBox(height: 20),
-                                  KeyedSubtree(
-                                    key: const ValueKey(
-                                        'home-left-bottom-section'),
-                                    child: _dashboardSection(
-                                      _buildUpcomingSection(
-                                        upcomingTasks.take(2).toList(),
-                                      ),
-                                    ),
+                                ),
+                                const SizedBox(height: 18),
+                                KeyedSubtree(
+                                  key: const ValueKey(
+                                      'home-left-bottom-section'),
+                                  child: _dashboardSection(
+                                    _buildUpcomingSection(upcomingTasks),
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(width: 24),
-                          Expanded(
-                            flex: 2,
-                            child: SizedBox(
-                              key: const ValueKey('home-right-column'),
-                              child: Column(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _buildWeekStripSection(
-                                      tasks, exams, deliverables),
-                                    const SizedBox(height: 5),
-                                  _dashboardSection(
-                                    _buildUpcomingAssessments(
-                                      upcomingExams.take(3).toList(),
-                                      upcomingDeliverables.take(3).toList(),
-                                    ),
+                        ),
+                        const SizedBox(width: 22),
+                        Expanded(
+                          flex: 5,
+                          child: SizedBox(
+                            key: const ValueKey('home-right-column'),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildWeekStripSection(
+                                    tasks, exams, deliverables),
+                                const SizedBox(height: 18),
+                                _dashboardSection(
+                                  _buildUpcomingAssessments(
+                                    upcomingExams,
+                                    upcomingDeliverables,
                                   ),
-                                  const SizedBox(height: 5),
-                                  KeyedSubtree(
-                                    key: const ValueKey(
-                                        'home-right-bottom-section'),
-                                    child: _buildSelectedDayActivities(
-                                        selectedDayTasks.take(3).toList()),
-                                  ),
-                                ],
-                              ),
+                                ),
+                                const SizedBox(height: 18),
+                                KeyedSubtree(
+                                  key: const ValueKey(
+                                      'home-right-bottom-section'),
+                                  child: _buildSelectedDayActivities(
+                                      selectedDayTasks.take(5).toList()),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     )
                   else ...[
                     _dashboardSection(
-                      _buildTodaySection(todayTasks, todaySubjects),
+                      _buildTodaySection(todayTasks, todayClasses),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 18),
                     _dashboardSection(
-                      _buildUpcomingSection(upcomingTasks.take(2).toList()),
+                      _buildUpcomingSection(upcomingTasks),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 18),
                     _buildWeekStripSection(tasks, exams, deliverables),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 18),
                     _dashboardSection(
                       _buildUpcomingAssessments(
                           upcomingExams, upcomingDeliverables),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 18),
                     _buildSelectedDayActivities(selectedDayTasks),
                   ],
                 ],
@@ -395,7 +400,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTodaySection(
-      List<Task> todayTasks, List<Subject> todaySubjects) {
+      List<Task> todayTasks, List<ClassScheduleEntry> todayClasses) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -422,29 +427,65 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 10),
 
-        // Classes scheduled for today
-        if (todaySubjects.isNotEmpty) ...[
+        // Classes scheduled for today (ordered chronologically by hour)
+        if (todayClasses.isNotEmpty) ...[
           Container(
             margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: CottagecoreColors.sage.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: CottagecoreColors.sage.withValues(alpha: 0.25),
+              ),
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.school_outlined,
-                    size: 20, color: CottagecoreColors.forest),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Clases de hoy: ${todaySubjects.map((s) => '${s.emoji} ${s.name}').join(', ')}',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: CottagecoreColors.forest,
+                const Row(
+                  children: [
+                    Icon(Icons.school_outlined,
+                        size: 18, color: CottagecoreColors.forest),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                      'Clases de hoy (por orden de hora):',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: CottagecoreColors.forest,
+                      ),
+                      ),
                     ),
-                  ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: todayClasses.map((item) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border(
+                          left: BorderSide(color: item.subject.color, width: 4),
+                        ),
+                      ),
+                      child: Text(
+                        '${item.timeLabel} — ${item.subject.emoji} ${item.subject.name}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF382F26),
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
               ],
             ),
@@ -479,8 +520,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildUpcomingSection(List<Task> upcomingTasks) {
     final compactTasks = upcomingTasks.take(6).toList();
-    final visibleSlotCount = compactTasks.length < 2 ? 2 : 2;
-    final fixedHeight = visibleSlotCount * 86.0;
+    const fixedHeight = 176.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -495,17 +535,22 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 12),
         if (upcomingTasks.isEmpty)
-          const EmptyBotanicalState(
-            message: 'Sin entregas pendientes próximas',
-            subMessage: 'Excelente ritmo de estudio.',
-            emoji: '🌾',
+          const SizedBox(
+            height: fixedHeight,
+            child: EmptyBotanicalState(
+              message: 'Sin entregas pendientes próximas',
+              subMessage: 'Excelente ritmo de estudio.',
+              emoji: '🌾',
+            ),
           )
         else
           SizedBox(
             height: fixedHeight,
             child: Scrollbar(
+              controller: _upcomingController,
               thumbVisibility: compactTasks.length > 2,
               child: ListView.separated(
+                controller: _upcomingController,
                 itemCount: compactTasks.length,
                 padding: EdgeInsets.zero,
                 physics: compactTasks.length > 2
@@ -603,12 +648,16 @@ class _HomeScreenState extends State<HomeScreen> {
     List<Deliverable> deliverables,
   ) {
     final repo = AgendaRepository.instance;
+    final pendingDeliverables =
+        deliverables.where((item) => !item.isSubmitted).toList();
+
     final items = <({
       DateTime date,
       String title,
       String detail,
       IconData icon,
       Color color,
+      VoidCallback onTap,
     })>[
       ...exams.map((exam) {
         final subject = repo.getSubjectById(exam.subjectId);
@@ -619,109 +668,167 @@ class _HomeScreenState extends State<HomeScreen> {
               '${subject?.emoji ?? '📚'} ${subject?.name ?? 'Examen'} · ${exam.time}',
           icon: Icons.school_outlined,
           color: CottagecoreColors.terracotta,
+          onTap: () => ExamFormModal.show(context, initialExam: exam),
         );
       }),
-      ...deliverables.map((item) {
+      ...pendingDeliverables.map((item) {
         final subject = repo.getSubjectById(item.subjectId);
         return (
           date: item.date,
           title: item.title,
           detail:
-              '${subject?.emoji ?? '📚'} ${subject?.name ?? 'Evento'}${item.description == null ? '' : ' · ${item.description}'}',
-          icon: Icons.event_outlined,
+              '${subject?.emoji ?? '📚'} ${subject?.name ?? 'Entrega'}${item.description == null ? '' : ' · ${item.description}'}',
+          icon: Icons.assignment_outlined,
           color: CottagecoreColors.sage,
+          onTap: () => DeliverableFormModal.show(context,
+              initialDeliverable: item, initialSubjectId: item.subjectId),
         );
       }),
     ]..sort((a, b) => a.date.compareTo(b.date));
 
+    // Altura fija uniforme para exactamente 3 elementos o estado vacío coherente
+    const double fixedContainerHeight = 236.0;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          '📌 Próximos exámenes y eventos',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: CottagecoreColors.forest,
-          ),
+        Row(
+          children: [
+              const Expanded(
+                child: Text(
+                  '📌 Próximos exámenes y eventos',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: CottagecoreColors.forest,
+                  ),
+              ),
+            ),
+              const SizedBox(width: 8),
+            if (items.length > 3)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: CottagecoreColors.sage.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '${items.length} totales',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: CottagecoreColors.forest,
+                  ),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 12),
-        if (items.isEmpty)
-          const EmptyBotanicalState(
-            message: 'Sin exámenes ni eventos próximos',
-            subMessage: 'Aquí aparecerán las próximas fechas importantes.',
-            emoji: '🌾',
-          )
-        else
-          Column(
-            children: items
-                .map((item) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Card(
-                        child: Container(
-                          constraints: const BoxConstraints(minHeight: 68),
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
+        SizedBox(
+          height: fixedContainerHeight,
+          child: items.isEmpty
+              ? const Center(
+                  child: EmptyBotanicalState(
+                    message: 'Sin exámenes ni entregas próximas',
+                    subMessage:
+                        'Aquí aparecerán tus próximas fechas académicas.',
+                    emoji: '🌾',
+                  ),
+                )
+              : Scrollbar(
+                  thumbVisibility: items.length > 3,
+                  child: ListView.separated(
+                    itemCount: items.length,
+                    padding: EdgeInsets.zero,
+                    physics: items.length > 3
+                        ? const AlwaysScrollableScrollPhysics()
+                        : const NeverScrollableScrollPhysics(),
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final item = items[index];
+                      return SizedBox(
+                        height: 72,
+                        child: Card(
+                          child: InkWell(
+                            onTap: item.onTap,
                             borderRadius: BorderRadius.circular(18),
-                            border: Border(
-                                left: BorderSide(color: item.color, width: 5)),
-                          ),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 48,
-                                height: 48,
-                                decoration: BoxDecoration(
-                                  color: item.color.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(12),
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border(
+                                  left: BorderSide(color: item.color, width: 5),
                                 ),
-                                child: Icon(item.icon, color: item.color),
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      item.title,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                        color: CottagecoreColors.forest,
-                                      ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 48,
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      color: item.color.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      item.detail,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: Color(0xFF7A6F62),
-                                      ),
+                                    child: Icon(item.icon, color: item.color),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          item.title,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w700,
+                                            color: CottagecoreColors.forest,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          item.detail,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: Color(0xFF7A6F62),
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    DateFormat('d MMM', 'es_ES')
+                                        .format(item.date),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: item.color,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.chevron_right_rounded,
+                                      size: 18,
+                                      color: CottagecoreColors.warmBrown),
+                                ],
                               ),
-                              const SizedBox(width: 8),
-                              Text(
-                                DateFormat('d MMM', 'es_ES').format(item.date),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: item.color,
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
-                    ))
-                .toList(),
-          ),
+                      );
+                    },
+                  ),
+                ),
+        ),
       ],
     );
   }

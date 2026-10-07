@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/agenda_repository.dart';
+import '../services/pwa_installation.dart';
 import '../theme/cottagecore_theme.dart';
 import 'subjects_screen.dart';
 
@@ -12,10 +13,53 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  late final PwaInstallation _pwaInstallation;
   bool _enableNotifications = true;
   bool _notify1DayBefore = true;
   bool _notify3DaysBefore = true;
   bool _notifyExams5DaysBefore = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _pwaInstallation = PwaInstallation(
+      onChanged: () {
+        if (mounted) setState(() {});
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _pwaInstallation.dispose();
+    super.dispose();
+  }
+
+  Future<void> _installOrShowInstructions() async {
+    if (_pwaInstallation.canInstall) {
+      await _pwaInstallation.promptInstall();
+      return;
+    }
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(_pwaInstallation.isIOS
+            ? 'Instalar Studia en iPhone'
+            : 'Instalar Studia'),
+        content: Text(_pwaInstallation.isIOS
+            ? '1. Pulsa Compartir.\n2. Selecciona “Añadir a pantalla de inicio”.\n3. Pulsa “Añadir”.'
+            : 'Abre el menú de tu navegador y selecciona “Instalar aplicación” o “Añadir a pantalla de inicio”.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Entendido'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -222,6 +266,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 20),
+
+              if (_pwaInstallation.isWeb && !_pwaInstallation.isStandalone) ...[
+                _sectionHeader('📲 Usar Studia como aplicación'),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.install_mobile_rounded,
+                        color: CottagecoreColors.forest),
+                    title: const Text('Instalar Studia',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    subtitle: Text(
+                      _pwaInstallation.isIOS
+                          ? 'Añádela a la pantalla de inicio desde Compartir.'
+                          : _pwaInstallation.canInstall
+                              ? 'Instálala en este dispositivo.'
+                              : 'Consulta cómo añadirla desde el menú del navegador.',
+                    ),
+                    trailing: IconButton.filledTonal(
+                      tooltip: _pwaInstallation.canInstall
+                          ? 'Instalar aplicación'
+                          : 'Ver instrucciones de instalación',
+                      onPressed: _installOrShowInstructions,
+                      icon: Icon(_pwaInstallation.canInstall
+                          ? Icons.download_rounded
+                          : Icons.open_in_new_rounded),
+                    ),
+                    onTap: _installOrShowInstructions,
+                  ),
+                ),
+                const SizedBox(height: 20),
+              ],
 
               // 👤 CUENTA & VERSION
               _sectionHeader('👤 Agenda Académica'),

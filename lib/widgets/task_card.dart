@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/models.dart';
 import '../screens/subject_detail_screen.dart';
 import '../services/agenda_repository.dart';
 import '../theme/cottagecore_theme.dart';
 import 'date_badge.dart';
 import 'priority_badge.dart';
+import 'attachment_preview_dialog.dart';
 
 class TaskCard extends StatelessWidget {
   const TaskCard({
@@ -147,6 +149,30 @@ class TaskCard extends StatelessWidget {
                   ),
                 ),
               ],
+              if (task.files.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: task.files.map((path) {
+                    final fileName = path.split(RegExp(r'[/\\]')).last;
+                    return ActionChip(
+                      avatar: const Icon(Icons.attach_file_rounded, size: 16),
+                      label: Text(fileName,
+                          overflow: TextOverflow.ellipsis, maxLines: 1),
+                        onPressed: repo.isCloudConnected
+                          ? () => AttachmentPreviewDialog.show(
+                            context,
+                            fileName: fileName,
+                            loadBytes: () => Supabase.instance.client.storage
+                              .from('agenda-attachments')
+                              .download(path),
+                            )
+                          : null,
+                    );
+                  }).toList(),
+                ),
+              ],
               const SizedBox(height: 12),
 
               // Badges row: Priority + Type
@@ -172,6 +198,54 @@ class TaskCard extends StatelessWidget {
                   ),
                 ],
               ),
+
+              // Subtareas / Checklist Progress
+              if (task.totalCheckItems > 0) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: CottagecoreColors.creamDarker,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: CottagecoreColors.border.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.checklist_rounded,
+                              size: 14, color: CottagecoreColors.forest),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              task.checklistProgressLabel,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: CottagecoreColors.forest,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: task.checklistProgress,
+                          minHeight: 4,
+                          backgroundColor: Colors.white,
+                          valueColor: const AlwaysStoppedAnimation(
+                              CottagecoreColors.sage),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 10),
 
               const Divider(height: 16, thickness: 0.7),

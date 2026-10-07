@@ -45,6 +45,42 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
+  <script>
+    (() => {
+      let deferredInstallPrompt;
+      const notifyInstallChange = () =>
+        window.dispatchEvent(new Event('studia-pwa-install-change'));
+
+      window.addEventListener('beforeinstallprompt', (event) => {
+        event.preventDefault();
+        deferredInstallPrompt = event;
+        notifyInstallChange();
+      });
+
+      window.addEventListener('appinstalled', () => {
+        deferredInstallPrompt = undefined;
+        notifyInstallChange();
+      });
+
+      window.studiaPwaCanInstall = () => Boolean(deferredInstallPrompt);
+      window.studiaPwaIsStandalone = () =>
+        window.matchMedia('(display-mode: standalone)').matches ||
+        window.navigator.standalone === true;
+      window.studiaPwaIsIOS = () =>
+        /iphone|ipad|ipod/i.test(window.navigator.userAgent) ||
+        (window.navigator.platform === 'MacIntel' &&
+          window.navigator.maxTouchPoints > 1);
+      window.studiaPwaPromptInstall = async () => {
+        if (!deferredInstallPrompt) return 'unavailable';
+        const installPrompt = deferredInstallPrompt;
+        deferredInstallPrompt = undefined;
+        await installPrompt.prompt();
+        const result = await installPrompt.userChoice;
+        notifyInstallChange();
+        return result.outcome;
+      };
+    })();
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/models.dart';
 import '../services/agenda_repository.dart';
 import '../theme/cottagecore_theme.dart';
+import 'studia_form_widgets.dart';
 
 class ExamFormModal extends StatefulWidget {
   const ExamFormModal({
@@ -19,34 +20,14 @@ class ExamFormModal extends StatefulWidget {
     Exam? initialExam,
     String? initialSubjectId,
   }) async {
-    final isDesktop = MediaQuery.of(context).size.width >= 700;
-
-    if (isDesktop) {
-      await showDialog(
-        context: context,
-        builder: (ctx) => Dialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 580, maxHeight: 800),
-            child: ExamFormModal(
-              initialExam: initialExam,
-              initialSubjectId: initialSubjectId,
-            ),
-          ),
-        ),
-      );
-    } else {
-      await showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (ctx) => ExamFormModal(
-          initialExam: initialExam,
-          initialSubjectId: initialSubjectId,
-        ),
-      );
-    }
+    await StudiaModalHelper.show(
+      context: context,
+      maxWidth: 600,
+      child: ExamFormModal(
+        initialExam: initialExam,
+        initialSubjectId: initialSubjectId,
+      ),
+    );
   }
 
   @override
@@ -150,73 +131,69 @@ class _ExamFormModalState extends State<ExamFormModal> {
     Navigator.of(context).pop();
   }
 
+  void _delete() {
+    if (widget.initialExam == null) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Eliminar examen?'),
+        content: const Text('Esta acción eliminará el examen de tu calendario.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: CottagecoreColors.urgentRed),
+            onPressed: () {
+              Navigator.pop(ctx);
+              AgendaRepository.instance.deleteExam(widget.initialExam!.id);
+              Navigator.of(context).pop();
+            },
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final repo = AgendaRepository.instance;
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final notesForSubject =
         repo.notes.where((note) => note.subjectId == _subjectId).toList();
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: CottagecoreColors.creamCard,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: EdgeInsets.fromLTRB(20, 16, 20, bottomInset + 20),
+    return StudiaModalContainer(
+      title: isEditing ? '📝 Editar examen' : '📖 Registrar examen',
+      subtitle: isEditing
+          ? 'Actualiza fecha, horario o temario a estudiar'
+          : 'Planifica tu examen y los temas que debes repasar',
       child: Form(
         key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 44,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: CottagecoreColors.border,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Text(
-                    isEditing
-                        ? '📝 Editar examen'
-                        : '📖 Registrar nuevo examen',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: CottagecoreColors.forest,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-
-              // Name
-              const _FieldLabel('Nombre del examen'),
-              const SizedBox(height: 6),
-              TextFormField(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Nombre del examen
+            StudiaFormField(
+              label: 'Nombre del examen',
+              isRequired: true,
+              child: TextFormField(
                 controller: _nameController,
-                decoration: const InputDecoration(),
+                autofocus: !isEditing,
+                decoration: const InputDecoration(
+                  hintText: 'Ej. Parcial de Arquitectura del Software',
+                ),
                 validator: (v) =>
                     v == null || v.trim().isEmpty ? 'Indica el nombre' : null,
               ),
-              const SizedBox(height: 12),
+            ),
 
-              // Subject
-              const _FieldLabel('Asignatura'),
-              const SizedBox(height: 6),
-              DropdownButtonFormField<String>(
+            // Asignatura
+            StudiaFormField(
+              label: 'Asignatura',
+              isRequired: true,
+              child: DropdownButtonFormField<String>(
                 initialValue: _subjectId.isNotEmpty ? _subjectId : null,
                 decoration: const InputDecoration(),
                 items: repo.subjects.map((sub) {
@@ -228,14 +205,17 @@ class _ExamFormModalState extends State<ExamFormModal> {
                 onChanged: (val) {
                   if (val != null) setState(() => _subjectId = val);
                 },
+                validator: (val) =>
+                    val == null || val.isEmpty ? 'Selecciona una materia' : null,
               ),
-              const SizedBox(height: 12),
+            ),
 
-              if (notesForSubject.isNotEmpty) ...[
-                const _FieldLabel('Apuntes relacionados'),
-                const SizedBox(height: 6),
-                DropdownButtonFormField<String?>(
-                  value: null,
+            // Apuntes relacionados opcionales
+            if (notesForSubject.isNotEmpty) ...[
+              StudiaFormField(
+                label: 'Apuntes relacionados (opcional)',
+                child: DropdownButtonFormField<String?>(
+                  initialValue: null,
                   isExpanded: true,
                   decoration: const InputDecoration(
                     hintText: 'Selecciona un apunte para vincular',
@@ -243,18 +223,17 @@ class _ExamFormModalState extends State<ExamFormModal> {
                   items: [
                     const DropdownMenuItem<String?>(
                       value: null,
-                      child: Text('Sin añadir'),
+                      child: Text('Sin añadir nuevo apunte'),
                     ),
                     ...notesForSubject.map((note) {
                       return DropdownMenuItem<String?>(
                         value: note.id,
-                        child: Text(note.title),
+                        child: Text('📄 ${note.title}'),
                       );
                     }),
                   ],
                   onChanged: (value) {
                     if (value == null) return;
-
                     setState(() {
                       if (!_linkedNoteIds.contains(value)) {
                         _linkedNoteIds.add(value);
@@ -262,16 +241,20 @@ class _ExamFormModalState extends State<ExamFormModal> {
                     });
                   },
                 ),
-                if (_linkedNoteIds.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Wrap(
+              ),
+              if (_linkedNoteIds.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: notesForSubject
                         .where((note) => _linkedNoteIds.contains(note.id))
                         .map((note) {
-                      return InputChip(
+                      return Chip(
                         label: Text(note.title),
+                        avatar: const Icon(Icons.description_outlined, size: 16),
+                        deleteIcon: const Icon(Icons.close_rounded, size: 16),
                         onDeleted: () {
                           setState(() {
                             _linkedNoteIds.remove(note.id);
@@ -280,236 +263,272 @@ class _ExamFormModalState extends State<ExamFormModal> {
                       );
                     }).toList(),
                   ),
-                ],
-                const SizedBox(height: 12),
+                ),
               ],
+            ],
 
-              // Date & Time
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const _FieldLabel('Fecha'),
-                        const SizedBox(height: 6),
-                        InkWell(
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: _date,
-                              firstDate: DateTime.now()
-                                  .subtract(const Duration(days: 30)),
-                              lastDate:
-                                  DateTime.now().add(const Duration(days: 365)),
-                            );
-                            if (picked != null) setState(() => _date = picked);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 14),
-                            decoration: BoxDecoration(
-                              color: CottagecoreColors.creamDarker,
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                  color: CottagecoreColors.border, width: 0.8),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.calendar_today_rounded,
-                                    size: 18, color: CottagecoreColors.sage),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    DateFormat('dd MMM yyyy', 'es_ES')
-                                        .format(_date),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+            // Fecha y Hora en 2 columnas
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: StudiaFormField(
+                    label: 'Fecha',
+                    child: InkWell(
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: context,
+                          initialDate: _date,
+                          firstDate: DateTime.now()
+                              .subtract(const Duration(days: 30)),
+                          lastDate:
+                              DateTime.now().add(const Duration(days: 365)),
+                        );
+                        if (picked != null) setState(() => _date = picked);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 13),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: CottagecoreColors.border),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calendar_today_rounded,
+                                size: 18, color: CottagecoreColors.forest),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                DateFormat('d MMM yyyy', 'es_ES').format(_date),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: CottagecoreColors.forest,
                                 ),
-                              ],
+                              ),
                             ),
-                          ),
+                          ],
                         ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const _FieldLabel('Hora'),
-                        const SizedBox(height: 6),
-                        TextFormField(
-                          controller: _timeController,
-                          decoration: const InputDecoration(hintText: '10:30'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              const _FieldLabel('Aula / Ubicación'),
-              const SizedBox(height: 6),
-              TextFormField(
-                controller: _classroomController,
-                decoration: const InputDecoration(),
-              ),
-              const SizedBox(height: 12),
-
-              // State
-              const _FieldLabel('Estado de preparación'),
-              const SizedBox(height: 6),
-              DropdownButtonFormField<ExamState>(
-                initialValue: _state,
-                decoration: const InputDecoration(),
-                items: ExamState.values.map((s) {
-                  final label = switch (s) {
-                    ExamState.notStarted => '🔴 No empezado',
-                    ExamState.started => '🟠 Empezado',
-                    ExamState.preparing => '🟡 Preparando',
-                    ExamState.revising => '🔵 Repasando',
-                    ExamState.ready => '🟢 Preparado',
-                  };
-                  return DropdownMenuItem(value: s, child: Text(label));
-                }).toList(),
-                onChanged: (v) {
-                  if (v != null) setState(() => _state = v);
-                },
-              ),
-              const SizedBox(height: 16),
-
-              // Temario Section
-              const _FieldLabel('Temario del examen'),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _newTopicController,
-                      decoration: const InputDecoration(
-                        hintText: 'Añadir tema (ej: Tema 3: Consultas)',
                       ),
-                      onSubmitted: (_) => _addTopic(),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    style: IconButton.styleFrom(
-                      backgroundColor: CottagecoreColors.sage,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: StudiaFormField(
+                    label: 'Hora',
+                    child: TextFormField(
+                      controller: _timeController,
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.access_time_rounded, size: 18),
+                        hintText: '10:00',
+                      ),
+                      validator: (v) => v == null || v.trim().isEmpty
+                          ? 'Indica la hora'
+                          : null,
                     ),
-                    icon: const Icon(Icons.add_rounded),
-                    onPressed: _addTopic,
+                  ),
+                ),
+              ],
+            ),
+
+            // Aula
+            StudiaFormField(
+              label: 'Aula o sala',
+              child: TextFormField(
+                controller: _classroomController,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.room_outlined, size: 18),
+                  hintText: 'Ej. Aula 2.3 / Salón de Actos',
+                ),
+              ),
+            ),
+
+            // Estado de preparación
+            StudiaFormField(
+              label: 'Estado de preparación',
+              child: SegmentedButton<ExamState>(
+                segments: const [
+                  ButtonSegment(
+                    value: ExamState.preparing,
+                    label: Text('Estudiando'),
+                    icon: Icon(Icons.menu_book_rounded, size: 16),
+                  ),
+                  ButtonSegment(
+                    value: ExamState.ready,
+                    label: Text('Listo'),
+                    icon: Icon(Icons.verified_outlined, size: 16),
                   ),
                 ],
-              ),
-              const SizedBox(height: 8),
-
-              // Topics list
-              if (_topics.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8.0),
-                  child: Text(
-                    'No hay temas añadidos aún.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                selected: {_state},
+                onSelectionChanged: (set) => setState(() => _state = set.first),
+                style: ButtonStyle(
+                  backgroundColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return CottagecoreColors.terracotta.withValues(alpha: 0.2);
+                    }
+                    return Colors.white;
+                  }),
+                  foregroundColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return CottagecoreColors.terracotta;
+                    }
+                    return CottagecoreColors.warmBrown;
+                  }),
+                  shape: WidgetStateProperty.all(
+                    RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
                   ),
-                )
-              else
-                ...List.generate(_topics.length, (index) {
-                  final topic = _topics[index];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: CottagecoreColors.creamDarker,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: [
-                        Checkbox(
-                          value: topic.isCompleted,
-                          activeColor: CottagecoreColors.calmGreen,
-                          onChanged: (val) {
-                            setState(() {
-                              _topics[index] =
-                                  topic.copyWith(isCompleted: val ?? false);
-                            });
-                          },
-                        ),
-                        Expanded(
-                          child: Text(
-                            topic.title,
-                            style: TextStyle(
-                              decoration: topic.isCompleted
-                                  ? TextDecoration.lineThrough
-                                  : null,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded, size: 16),
-                          visualDensity: VisualDensity.compact,
-                          onPressed: () => _removeTopic(index),
-                        ),
-                      ],
-                    ),
-                  );
-                }),
-              const SizedBox(height: 12),
+                ),
+              ),
+            ),
 
-              // Notes
-              const _FieldLabel('Notas / Recordatorios'),
-              const SizedBox(height: 6),
-              TextFormField(
+            // Temas a estudiar
+            StudiaSectionHeader(
+              title: '📚 Temario a estudiar (${_topics.length})',
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _newTopicController,
+                    decoration: InputDecoration(
+                      hintText: 'Añadir tema (ej. Tema 3: Normalización)...',
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      isDense: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide:
+                            const BorderSide(color: CottagecoreColors.border),
+                      ),
+                    ),
+                    onSubmitted: (_) => _addTopic(),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filled(
+                  style: IconButton.styleFrom(
+                    backgroundColor: CottagecoreColors.terracotta,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  icon: const Icon(Icons.add_rounded),
+                  tooltip: 'Añadir tema',
+                  onPressed: _addTopic,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ..._topics.asMap().entries.map((entry) {
+              final index = entry.key;
+              final topic = entry.value;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: CottagecoreColors.border),
+                ),
+                child: Row(
+                  children: [
+                    Checkbox(
+                      value: topic.isCompleted,
+                      activeColor: CottagecoreColors.forest,
+                      onChanged: (val) {
+                        setState(() {
+                          _topics[index] =
+                              topic.copyWith(isCompleted: val ?? false);
+                        });
+                      },
+                    ),
+                    Expanded(
+                      child: Text(
+                        topic.title,
+                        style: TextStyle(
+                          fontSize: 13,
+                          decoration: topic.isCompleted
+                              ? TextDecoration.lineThrough
+                              : null,
+                          color: topic.isCompleted
+                              ? const Color(0xFF8C8276)
+                              : const Color(0xFF382F26),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                      tooltip: 'Eliminar tema',
+                      color: CottagecoreColors.urgentRed,
+                      onPressed: () => _removeTopic(index),
+                    ),
+                  ],
+                ),
+              );
+            }),
+            const SizedBox(height: 10),
+
+            // Notas
+            StudiaFormField(
+              label: 'Notas / Recordatorios (opcional)',
+              bottomSpacing: 8,
+              child: TextFormField(
                 controller: _notesController,
                 maxLines: 2,
                 decoration: const InputDecoration(
                   hintText: 'Material permitido, tipo de examen, etc.',
                 ),
               ),
-              const SizedBox(height: 20),
-
-              // Submit Button
-              FilledButton.icon(
-                onPressed: _submit,
-                style: FilledButton.styleFrom(
-                  backgroundColor: CottagecoreColors.forest,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16)),
-                ),
-                icon: const Icon(Icons.check_rounded),
-                label: Text(
-                  isEditing ? 'Actualizar examen' : 'Guardar examen',
-                  style: const TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+      ),
+      actions: Row(
+        children: [
+          if (isEditing)
+            IconButton.outlined(
+              icon: const Icon(Icons.delete_outline_rounded,
+                  color: CottagecoreColors.urgentRed),
+              tooltip: 'Eliminar examen',
+              onPressed: _delete,
+              style: IconButton.styleFrom(
+                side: const BorderSide(color: Color(0xFFE2C4B8)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
                 ),
               ),
-            ],
+            ),
+          if (isEditing) const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: CottagecoreColors.warmBrown,
+                side: const BorderSide(color: CottagecoreColors.border),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: const Text('Cancelar'),
+            ),
           ),
-        ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: StudiaPrimaryButton(
+              label: isEditing ? 'Guardar examen' : 'Registrar examen',
+              icon: isEditing ? Icons.check_rounded : Icons.add_rounded,
+              onPressed: _submit,
+            ),
+          ),
+        ],
       ),
     );
   }
-}
-
-class _FieldLabel extends StatelessWidget {
-  const _FieldLabel(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Text(
-        text,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: CottagecoreColors.warmBrown,
-        ),
-      );
 }

@@ -8,7 +8,7 @@ Studia es una agenda académica para organizar asignaturas, tareas, exámenes, e
 - Crear y gestionar tareas, exámenes, entregas y apuntes.
 - Enlazar tareas con exámenes o entregas, y exámenes con apuntes.
 - Consultar el calendario, la semana y el historial académico.
-- Abrir archivos adjuntos desde la aplicación.
+- Previsualizar PDF, imágenes y texto adjunto dentro de la aplicación.
 - Iniciar sesión y sincronizar los datos con Supabase.
 
 ## Requisitos
@@ -33,6 +33,10 @@ flutter run -d chrome --dart-define=SUPABASE_URL=https://tu-proyecto.supabase.co
 
 La configuración de Supabase está en `lib/services/supabase_config.dart`. La clave publishable configurada allí es una clave de cliente; las políticas de acceso y permisos de los datos deben configurarse en Supabase.
 
+Antes de desplegar las funciones de checklist y adjuntos, aplica los scripts SQL de `supabase/` desde el editor SQL de tu proyecto. El script de adjuntos configura el bucket privado `agenda-attachments` y restringe sus archivos a la carpeta identificada con el ID del usuario.
+
+Para permitir la recuperación de contraseña, añade `https://your-studia.netlify.app/` a las URL de redirección permitidas en **Supabase > Authentication > URL Configuration**. Añade también las URL locales que utilices para probar.
+
 ## Compilar la web
 
 ```bash
@@ -53,6 +57,6 @@ La configuración de instalación se encuentra en:
 - `web/index.html`: metadatos web y compatibilidad de instalación en iOS.
 - `netlify.toml`: publicación, cabeceras de caché y rutas de la aplicación.
 
-La instalación se ofrece desde el navegador, no desde un botón dentro de Studia. En Android, abre la web publicada con Chrome y usa el menú para instalarla o añadirla a la pantalla de inicio. En iPhone/iPad, abre la web con Safari, toca **Compartir** y selecciona **Añadir a pantalla de inicio**. La web debe estar publicada mediante HTTPS.
+Studia ofrece la instalación desde **Ajustes** cuando la web se ejecuta en un navegador. En Android, Chrome y Edge se muestra el diálogo de instalación cuando el navegador lo permite. En iPhone/iPad, abre la web con Safari, toca **Compartir** y selecciona **Añadir a pantalla de inicio**. La web debe estar publicada mediante HTTPS.
 
 Studia aún no implementa una estrategia de funcionamiento offline completo.

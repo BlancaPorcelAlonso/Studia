@@ -190,6 +190,22 @@ class AgendaRepository extends ChangeNotifier {
     }
   }
 
+  Future<void> toggleTaskCheckItem(String taskId, String checkItemId) async {
+    final index = _tasks.indexWhere((t) => t.id == taskId);
+    if (index != -1) {
+      final task = _tasks[index];
+      final updatedChecklist = task.checklist.map((item) {
+        if (item.id == checkItemId) {
+          return item.copyWith(isChecked: !item.isChecked);
+        }
+        return item;
+      }).toList();
+      _tasks[index] = task.copyWith(checklist: updatedChecklist);
+      await _persistTasks();
+      notifyListeners();
+    }
+  }
+
   Future<void> deleteTask(String taskId) async {
     _tasks.removeWhere((t) => t.id == taskId);
     await _persistTasks();
@@ -323,6 +339,16 @@ class AgendaRepository extends ChangeNotifier {
     final index = _deliverables.indexWhere((item) => item.id == deliverable.id);
     if (index != -1) {
       _deliverables[index] = deliverable;
+      await _persistDeliverables();
+      notifyListeners();
+    }
+  }
+
+  Future<void> toggleDeliverableSubmitted(String deliverableId) async {
+    final index = _deliverables.indexWhere((item) => item.id == deliverableId);
+    if (index != -1) {
+      final old = _deliverables[index];
+      _deliverables[index] = old.copyWith(isSubmitted: !old.isSubmitted);
       await _persistDeliverables();
       notifyListeners();
     }

@@ -19,6 +19,7 @@ class _SupabaseGateState extends State<SupabaseGate> {
   String? _loadedUserId;
   Object? _loadError;
   bool _loading = true;
+  bool _passwordRecovery = false;
   int _requestId = 0;
 
   @override
@@ -27,7 +28,12 @@ class _SupabaseGateState extends State<SupabaseGate> {
     final auth = Supabase.instance.client.auth;
     _user = auth.currentUser;
     _subscription = auth.onAuthStateChange.listen(
-      (state) => _handleUser(state.session?.user),
+      (state) {
+        if (state.event == AuthChangeEvent.passwordRecovery && mounted) {
+          setState(() => _passwordRecovery = true);
+        }
+        _handleUser(state.session?.user);
+      },
       onError: (Object error, StackTrace stackTrace) {
         if (mounted) setState(() => _loadError = error);
       },
@@ -83,6 +89,13 @@ class _SupabaseGateState extends State<SupabaseGate> {
 
   @override
   Widget build(BuildContext context) {
+    if (_passwordRecovery) {
+      return PasswordRecoveryScreen(
+        onCompleted: () {
+          if (mounted) setState(() => _passwordRecovery = false);
+        },
+      );
+    }
     if (_user == null) return const AuthScreen();
     if (_loading) {
       return const Scaffold(

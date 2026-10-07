@@ -3,6 +3,7 @@ import '../models/models.dart';
 import '../services/agenda_repository.dart';
 import '../theme/cottagecore_theme.dart';
 import 'schedule_editor.dart';
+import 'studia_form_widgets.dart';
 
 class SubjectFormModal extends StatefulWidget {
   const SubjectFormModal({this.initialSubject, super.key});
@@ -13,28 +14,11 @@ class SubjectFormModal extends StatefulWidget {
     BuildContext context, {
     Subject? initialSubject,
   }) async {
-    final isDesktop = MediaQuery.of(context).size.width >= 700;
-    if (isDesktop) {
-      await showDialog<void>(
-        context: context,
-        builder: (context) => Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
-          ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 580, maxHeight: 800),
-            child: SubjectFormModal(initialSubject: initialSubject),
-          ),
-        ),
-      );
-    } else {
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (context) => SubjectFormModal(initialSubject: initialSubject),
-      );
-    }
+    await StudiaModalHelper.show(
+      context: context,
+      maxWidth: 600,
+      child: SubjectFormModal(initialSubject: initialSubject),
+    );
   }
 
   @override
@@ -87,6 +71,14 @@ class _SubjectFormModalState extends State<SubjectFormModal> {
     final subject = widget.initialSubject;
     final name = _nameController.text.trim();
     final teacher = _teacherController.text.trim();
+    // Sort schedules chronologically by startMinutes
+    final sortedSchedules = List<ClassSchedule>.from(_schedules)
+      ..sort((a, b) {
+        final dayCmp = a.weekday.compareTo(b.weekday);
+        if (dayCmp != 0) return dayCmp;
+        return a.startMinutes.compareTo(b.startMinutes);
+      });
+
     final updated = subject == null
         ? Subject(
             id: 'sub_${DateTime.now().millisecondsSinceEpoch}',
@@ -94,14 +86,14 @@ class _SubjectFormModalState extends State<SubjectFormModal> {
             emoji: _emoji,
             colorValue: _colorValue,
             teacher: teacher.isEmpty ? null : teacher,
-            schedules: _schedules,
+            schedules: sortedSchedules,
           )
         : subject.copyWith(
             name: name,
             emoji: _emoji,
             colorValue: _colorValue,
             teacher: teacher.isEmpty ? null : teacher,
-            schedules: _schedules,
+            schedules: sortedSchedules,
           );
     if (subject == null) {
       await AgendaRepository.instance.addSubject(updated);
@@ -113,53 +105,21 @@ class _SubjectFormModalState extends State<SubjectFormModal> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    return Container(
-      decoration: const BoxDecoration(
-        color: CottagecoreColors.creamCard,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: EdgeInsets.fromLTRB(20, 16, 20, bottomInset + 20),
+    return StudiaModalContainer(
+      title: isEditing ? '✏️ Editar asignatura' : '📚 Nueva asignatura',
+      subtitle: isEditing
+          ? 'Modifica los datos, colores u horarios de la materia'
+          : 'Añade una asignatura a tu plan de estudio',
       child: Form(
         key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 44,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: CottagecoreColors.border,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Text(
-                    isEditing ? '✏️ Editar asignatura' : '📚 Nueva asignatura',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: CottagecoreColors.forest,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: 'Cerrar',
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              const _FieldLabel('Nombre de la materia'),
-              const SizedBox(height: 6),
-              TextFormField(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Nombre
+            StudiaFormField(
+              label: 'Nombre de la materia',
+              isRequired: true,
+              child: TextFormField(
                 controller: _nameController,
                 autofocus: !isEditing,
                 decoration: const InputDecoration(
@@ -169,40 +129,44 @@ class _SubjectFormModalState extends State<SubjectFormModal> {
                     ? 'Escribe el nombre de la materia'
                     : null,
               ),
-              const SizedBox(height: 14),
-              const _FieldLabel('Profesor/a'),
-              const SizedBox(height: 6),
-              TextFormField(
+            ),
+
+            // Profesor/a
+            StudiaFormField(
+              label: 'Profesor/a (opcional)',
+              child: TextFormField(
                 controller: _teacherController,
                 decoration: const InputDecoration(
                   hintText: 'Ej. Dra. Carmen Silva',
                 ),
               ),
-              const SizedBox(height: 16),
-              const _FieldLabel('Icono de la asignatura'),
-              const SizedBox(height: 8),
-              Wrap(
+            ),
+
+            // Icono
+            StudiaFormField(
+              label: 'Icono de la asignatura',
+              child: Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: _emojiOptions.map((emoji) {
                   final selected = emoji == _emoji;
                   return InkWell(
                     onTap: () => setState(() => _emoji = emoji),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                     child: Container(
                       width: 44,
                       height: 44,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: selected
-                            ? CottagecoreColors.sage.withValues(alpha: 0.2)
+                            ? CottagecoreColors.sage.withValues(alpha: 0.25)
                             : CottagecoreColors.creamDarker,
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(14),
                         border: Border.all(
                           color: selected
-                              ? CottagecoreColors.sage
+                              ? CottagecoreColors.forest
                               : CottagecoreColors.border,
-                          width: selected ? 1.8 : 0.8,
+                          width: selected ? 2 : 1,
                         ),
                       ),
                       child: Text(emoji, style: const TextStyle(fontSize: 22)),
@@ -210,17 +174,14 @@ class _SubjectFormModalState extends State<SubjectFormModal> {
                   );
                 }).toList(),
               ),
-              const SizedBox(height: 16),
-              ScheduleEditor(
-                initialSchedules: _schedules,
-                onChanged: (value) => _schedules = value,
-              ),
-              const SizedBox(height: 14),
-              const _FieldLabel('Color identificador'),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 10,
-                runSpacing: 8,
+            ),
+
+            // Color identificador
+            StudiaFormField(
+              label: 'Color identificador',
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 10,
                 children: _colorOptions.map((option) {
                   final selected = _colorValue == option.$1;
                   return Tooltip(
@@ -235,8 +196,15 @@ class _SubjectFormModalState extends State<SubjectFormModal> {
                           color: Color(option.$1),
                           shape: BoxShape.circle,
                           border: selected
-                              ? Border.all(color: CottagecoreColors.forest, width: 2.5)
-                              : null,
+                              ? Border.all(color: CottagecoreColors.forest, width: 2.8)
+                              : Border.all(color: Colors.white, width: 1.5),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x1F000000),
+                              blurRadius: 4,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
                         ),
                         child: selected
                             ? const Icon(Icons.check_rounded,
@@ -247,45 +215,46 @@ class _SubjectFormModalState extends State<SubjectFormModal> {
                   );
                 }).toList(),
               ),
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: _submit,
-                style: FilledButton.styleFrom(
-                  backgroundColor: CottagecoreColors.forest,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                icon: const Icon(Icons.check_rounded),
-                label: Text(
-                  isEditing ? 'Guardar asignatura' : 'Crear asignatura',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
+            ),
+
+            // Editor de horarios
+            StudiaSectionHeader(
+              title: '🕒 Horario de clases',
+            ),
+            ScheduleEditor(
+              initialSchedules: _schedules,
+              onChanged: (value) => _schedules = value,
+            ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+      actions: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: CottagecoreColors.warmBrown,
+                side: const BorderSide(color: CottagecoreColors.border),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
               ),
-            ],
+              child: const Text('Cancelar'),
+            ),
           ),
-        ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: StudiaPrimaryButton(
+              label: isEditing ? 'Guardar cambios' : 'Crear asignatura',
+              icon: isEditing ? Icons.check_rounded : Icons.add_rounded,
+              onPressed: _submit,
+            ),
+          ),
+        ],
       ),
     );
   }
-}
-
-class _FieldLabel extends StatelessWidget {
-  const _FieldLabel(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Text(
-        text,
-        style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: CottagecoreColors.warmBrown,
-        ),
-      );
 }

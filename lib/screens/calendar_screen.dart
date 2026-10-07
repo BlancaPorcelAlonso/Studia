@@ -3,9 +3,12 @@ import 'package:intl/intl.dart';
 import '../models/models.dart';
 import '../services/agenda_repository.dart';
 import '../theme/cottagecore_theme.dart';
+import '../widgets/deliverable_form_modal.dart';
 import '../widgets/empty_botanical_state.dart';
+import '../widgets/exam_form_modal.dart';
 import '../widgets/task_card.dart';
 import '../widgets/task_form_modal.dart';
+import 'subject_detail_screen.dart';
 
 enum CalendarViewMode { month, week, agenda }
 
@@ -120,6 +123,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
         }
       }
     }
+    entries.sort((a, b) {
+      final aStart =
+          a.schedule?.startMinutes ?? _minutesOfDay(_classHours(a.subject));
+      final bStart =
+          b.schedule?.startMinutes ?? _minutesOfDay(_classHours(b.subject));
+      return aStart.compareTo(bStart);
+    });
     return entries;
   }
 
@@ -143,11 +153,18 @@ class _CalendarScreenState extends State<CalendarScreen> {
   String _classHoursOnDate(Subject subject, DateTime date) {
     final schedules = subject.schedules
         .where((schedule) => schedule.weekday == date.weekday)
-        .toList();
+        .toList()
+      ..sort((a, b) => a.startMinutes.compareTo(b.startMinutes));
     if (schedules.isEmpty) return _classHours(subject);
     return schedules
         .map((schedule) => '${schedule.timeLabel} · ${schedule.durationLabel}')
         .join('  |  ');
+  }
+
+  void _openSubject(Subject subject) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SubjectDetailScreen(subject: subject),
+    ));
   }
 
   @override
@@ -636,15 +653,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(
-                      item.isSubmitted
-                          ? Icons.event_available_rounded
-                          : Icons.event_outlined,
-                      color: CottagecoreColors.terracotta),
+                    item.isSubmitted
+                        ? Icons.assignment_turned_in_outlined
+                        : Icons.assignment_outlined,
+                    color: AgendaRepository.instance
+                            .getSubjectById(item.subjectId)
+                            ?.color ??
+                        CottagecoreColors.sage,
+                  ),
                   title: Text(item.title),
                   subtitle:
                       item.description == null ? null : Text(item.description!),
                   trailing: Text(item.isSubmitted ? 'Entregada' : 'Pendiente',
                       style: const TextStyle(fontSize: 11)),
+                  onTap: () => DeliverableFormModal.show(
+                    context,
+                    initialDeliverable: item,
+                    initialSubjectId: item.subjectId,
+                  ),
                 )),
             const SizedBox(height: 8),
           ],
@@ -657,7 +683,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   color: CottagecoreColors.forest),
             ),
             const SizedBox(height: 6),
-            ...classes.map((subject) => Container(
+            ...classes.map((subject) => InkWell(
+                onTap: () => _openSubject(subject),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
@@ -688,7 +717,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ),
                     ],
                   ),
-                )),
+                ))),
             const SizedBox(height: 8),
           ],
           if (exams.isNotEmpty) ...[
@@ -700,17 +729,30 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   color: CottagecoreColors.terracotta),
             ),
             const SizedBox(height: 6),
-            ...exams.map((exam) => Container(
+            ...exams.map((exam) {
+              final subject =
+                  AgendaRepository.instance.getSubjectById(exam.subjectId);
+              return InkWell(
+                onTap: () => ExamFormModal.show(context, initialExam: exam),
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: CottagecoreColors.urgentRedBg,
+                    color: (subject?.color ?? CottagecoreColors.terracotta)
+                        .withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(14),
+                    border: Border(
+                      left: BorderSide(
+                          color: subject?.color ?? CottagecoreColors.terracotta,
+                          width: 4),
+                    ),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.school_rounded,
-                          color: CottagecoreColors.urgentRed, size: 18),
+                      Icon(Icons.school_rounded,
+                          color: subject?.color ?? CottagecoreColors.terracotta,
+                          size: 18),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -721,7 +763,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       ),
                     ],
                   ),
-                )),
+                ),
+              );
+            }),
             const SizedBox(height: 8),
           ],
           if (tasks.isNotEmpty) ...[
@@ -885,6 +929,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         icon: Icons.school_outlined,
         color: subject.color,
         timeLabel: schedule?.timeLabel ?? _classHours(subject),
+        onTap: () => _openSubject(subject),
       ));
     }
 
@@ -905,7 +950,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
             '${subject?.emoji ?? '📚'} ${subject?.name ?? 'Materia'} · ${task.statusLabel}',
         subjectId: task.subjectId,
         type: type,
-        icon: Icons.checklist_rounded,
+        icon: switch (task.type) {
+          TaskType.assignment || TaskType.project => Icons.checklist_rounded,
+          TaskType.exam => Icons.school_outlined,
+          TaskType.classType => Icons.school_outlined,
+          TaskType.event => Icons.event_note_outlined,
+        },
         color: subject?.color ?? CottagecoreColors.sage,
         timeLabel: DateFormat('HH:mm').format(task.dueDate),
         onTap: () => TaskFormModal.show(context, initialTask: task),
@@ -924,8 +974,9 @@ class _CalendarScreenState extends State<CalendarScreen> {
         subjectId: exam.subjectId,
         type: _WeekFilterType.exam,
         icon: Icons.school_outlined,
-        color: CottagecoreColors.urgentRed,
+        color: subject?.color ?? CottagecoreColors.terracotta,
         timeLabel: exam.time,
+        onTap: () => ExamFormModal.show(context, initialExam: exam),
       ));
     }
 
@@ -940,8 +991,12 @@ class _CalendarScreenState extends State<CalendarScreen> {
             '${subject?.emoji ?? '📚'} ${subject?.name ?? 'Evento'}${event.isSubmitted ? ' · Entregada' : ''}',
         subjectId: event.subjectId,
         type: _WeekFilterType.event,
-        icon: Icons.event_outlined,
-        color: CottagecoreColors.terracotta,
+        icon: event.isSubmitted
+            ? Icons.assignment_turned_in_outlined
+            : Icons.assignment_outlined,
+        color: subject?.color ?? CottagecoreColors.terracotta,
+        onTap: () => DeliverableFormModal.show(context,
+            initialDeliverable: event, initialSubjectId: event.subjectId),
       ));
     }
 
@@ -1266,156 +1321,181 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
     for (final item in deliverables) {
       final subject = repo.getSubjectById(item.subjectId);
-      widgets.add(Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: CottagecoreColors.warningOrangeBg,
-          borderRadius: BorderRadius.circular(14),
-          border: Border(
-              left: BorderSide(color: CottagecoreColors.terracotta, width: 4)),
-        ),
-        child: Row(
-          children: [
-            Icon(
-                item.isSubmitted
-                    ? Icons.event_available_rounded
-                    : Icons.event_outlined,
-                color: CottagecoreColors.terracotta,
-                size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                '${item.title}${subject == null ? '' : ' • ${subject.emoji} ${subject.name}'}${item.isSubmitted ? ' · Entregada' : ''}',
-                style:
-                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+      widgets.add(InkWell(
+        onTap: () => DeliverableFormModal.show(context,
+            initialDeliverable: item, initialSubjectId: item.subjectId),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: (subject?.color ?? CottagecoreColors.terracotta)
+                .withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(14),
+            border: Border(
+                left: BorderSide(
+                    color: subject?.color ?? CottagecoreColors.terracotta,
+                    width: 4)),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                  item.isSubmitted
+                      ? Icons.assignment_turned_in_outlined
+                      : Icons.assignment_outlined,
+                  color: subject?.color ?? CottagecoreColors.terracotta,
+                  size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${item.title}${subject == null ? '' : ' • ${subject.emoji} ${subject.name}'}${item.isSubmitted ? ' · Entregada' : ''}',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 13),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ));
     }
 
     for (final subject in classes) {
-      widgets.add(Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: subject.color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(14),
-          border: Border(left: BorderSide(color: subject.color, width: 4)),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.access_time_rounded, size: 18, color: subject.color),
-            const SizedBox(width: 8),
-            Text(
-              _classHoursOnDate(subject, date),
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                  color: subject.color),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                '${subject.emoji} ${subject.name}${subject.classroom == null ? '' : ' • ${subject.classroom}'}',
-                style:
-                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+      widgets.add(InkWell(
+        onTap: () => _openSubject(subject),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: subject.color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(14),
+            border: Border(left: BorderSide(color: subject.color, width: 4)),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.access_time_rounded, size: 18, color: subject.color),
+              const SizedBox(width: 8),
+              Text(
+                _classHoursOnDate(subject, date),
+                style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: subject.color),
               ),
-            ),
-          ],
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '${subject.emoji} ${subject.name}${subject.classroom == null ? '' : ' • ${subject.classroom}'}',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
         ),
       ));
     }
 
     for (final exam in exams) {
       final sub = repo.getSubjectById(exam.subjectId);
-      widgets.add(Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: CottagecoreColors.urgentRedBg,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-              color: CottagecoreColors.urgentRed.withValues(alpha: 0.3)),
-        ),
-        child: Row(
-          children: [
-            Text('${exam.time} ',
-                style:
-                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-            const Text('📝 '),
-            Expanded(
-              child: Text(
-                '${exam.name} • ${sub?.emoji ?? '📚'} ${sub?.name ?? ''} (${exam.classroom})',
-                style:
-                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-              ),
+      widgets.add(InkWell(
+        onTap: () => ExamFormModal.show(context, initialExam: exam),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: (sub?.color ?? CottagecoreColors.terracotta)
+                .withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(14),
+            border: Border(
+              left: BorderSide(
+                  color: sub?.color ?? CottagecoreColors.terracotta, width: 4),
             ),
-          ],
+          ),
+          child: Row(
+            children: [
+              Text('${exam.time} ',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 13)),
+              Icon(Icons.school_outlined,
+                  size: 16, color: sub?.color ?? CottagecoreColors.terracotta),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  '${exam.name} • ${sub?.emoji ?? '📚'} ${sub?.name ?? ''} (${exam.classroom})',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
         ),
       ));
     }
 
     for (final task in tasks) {
       final sub = repo.getSubjectById(task.subjectId);
-      widgets.add(Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: CottagecoreColors.creamCard,
-          borderRadius: BorderRadius.circular(14),
-          border: Border(
-              left: BorderSide(
-                  color: sub?.color ?? CottagecoreColors.sage, width: 4)),
-        ),
-        child: Row(
-          children: [
-            InkWell(
-              onTap: () => repo.toggleTaskCompletion(task.id),
-              child: Icon(
-                task.status == TaskStatus.completed
-                    ? Icons.check_circle_rounded
-                    : Icons.radio_button_unchecked_rounded,
-                color: task.status == TaskStatus.completed
-                    ? CottagecoreColors.calmGreen
-                    : Colors.grey,
-                size: 20,
+      widgets.add(InkWell(
+        onTap: () => TaskFormModal.show(context, initialTask: task),
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: CottagecoreColors.creamCard,
+            borderRadius: BorderRadius.circular(14),
+            border: Border(
+                left: BorderSide(
+                    color: sub?.color ?? CottagecoreColors.sage, width: 4)),
+          ),
+          child: Row(
+            children: [
+              InkWell(
+                onTap: () => repo.toggleTaskCompletion(task.id),
+                child: Icon(
+                  task.status == TaskStatus.completed
+                      ? Icons.check_circle_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                  color: task.status == TaskStatus.completed
+                      ? CottagecoreColors.calmGreen
+                      : Colors.grey,
+                  size: 20,
+                ),
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    task.title,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      decoration: task.status == TaskStatus.completed
-                          ? TextDecoration.lineThrough
-                          : null,
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      task.title,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        decoration: task.status == TaskStatus.completed
+                            ? TextDecoration.lineThrough
+                            : null,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${sub?.emoji ?? '📚'} ${sub?.name ?? 'Materia'} • ${task.typeLabel}',
-                    style:
-                        const TextStyle(fontSize: 12, color: Color(0xFF7A6F62)),
-                  ),
-                ],
+                    const SizedBox(height: 2),
+                    Text(
+                      '${sub?.emoji ?? '📚'} ${sub?.name ?? 'Materia'} • ${task.typeLabel}',
+                      style: const TextStyle(
+                          fontSize: 12, color: Color(0xFF7A6F62)),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Text(
-              task.dueInfo.text,
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: task.dueInfo.color),
-            ),
-          ],
+              Text(
+                task.dueInfo.text,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: task.dueInfo.color),
+              ),
+            ],
+          ),
         ),
       ));
     }

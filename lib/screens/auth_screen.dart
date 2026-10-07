@@ -58,6 +58,101 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  Future<void> _showForgotPasswordDialog() async {
+    final emailController = TextEditingController(text: _email.text.trim());
+    final formKey = GlobalKey<FormState>();
+    var isSending = false;
+    String? errorMessage;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Recuperar contraseña'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Escribe el correo asociado a tu cuenta.'),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Correo electrónico',
+                  ),
+                  validator: (value) =>
+                      value != null && value.trim().contains('@')
+                          ? null
+                          : 'Escribe un correo válido',
+                ),
+                if (errorMessage != null) ...[
+                  const SizedBox(height: 10),
+                  Text(errorMessage!,
+                      style: const TextStyle(color: CottagecoreColors.urgentRed)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSending ? null : () => Navigator.pop(dialogContext),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: isSending
+                  ? null
+                  : () async {
+                      if (!formKey.currentState!.validate()) return;
+                      setDialogState(() {
+                        isSending = true;
+                        errorMessage = null;
+                      });
+                      try {
+                        await Supabase.instance.client.auth
+                            .resetPasswordForEmail(
+                          emailController.text.trim(),
+                          redirectTo: Uri.base.origin,
+                        );
+                        if (!mounted) return;
+                        Navigator.pop(dialogContext);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Revisa tu correo. Si la dirección está registrada, recibirás un enlace para cambiar la contraseña.',
+                            ),
+                          ),
+                        );
+                      } on AuthException catch (error) {
+                        setDialogState(() {
+                          errorMessage = error.message;
+                          isSending = false;
+                        });
+                      } catch (_) {
+                        setDialogState(() {
+                          errorMessage =
+                              'No se pudo enviar el correo. Comprueba tu conexión e inténtalo de nuevo.';
+                          isSending = false;
+                        });
+                      }
+                    },
+              child: isSending
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Enviar enlace'),
+            ),
+          ],
+        ),
+      ),
+    );
+    emailController.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -181,6 +276,12 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                       ),
                     ),
+                    if (!_isSigningUp)
+                      TextButton(
+                        onPressed:
+                            _isLoading ? null : _showForgotPasswordDialog,
+                        child: const Text('¿Has olvidado tu contraseña?'),
+                      ),
                     TextButton(
                       onPressed: _isLoading
                           ? null
@@ -200,4 +301,160 @@ class _AuthScreenState extends State<AuthScreen> {
       ),
     );
   }
+}
+
+class PasswordRecoveryScreen extends StatefulWidget {
+  const PasswordRecoveryScreen({required this.onCompleted, super.key});
+
+  final VoidCallback onCompleted;
+
+  @override
+  State<PasswordRecoveryScreen> createState() =>
+      _PasswordRecoveryScreenState();
+}
+
+class _PasswordRecoveryScreenState extends State<PasswordRecoveryScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _password = TextEditingController();
+  final _confirmation = TextEditingController();
+  bool _isLoading = false;
+  bool _obscurePassword = true;
+  bool _obscureConfirmation = true;
+
+  @override
+  void dispose() {
+    _password.dispose();
+    _confirmation.dispose();
+    super.dispose();
+  }
+
+  Future<void> _savePassword() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isLoading = true);
+    try {
+      final auth = Supabase.instance.client.auth;
+      await auth.updateUser(UserAttributes(password: _password.text));
+      await auth.signOut();
+      widget.onCompleted();
+    } on AuthException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'No se pudo guardar la contraseña. Vuelve a abrir el enlace e inténtalo de nuevo.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(28),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Icon(Icons.lock_reset_rounded,
+                          size: 44, color: CottagecoreColors.sage),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Nueva contraseña',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'serif',
+                          fontSize: 28,
+                          fontWeight: FontWeight.w700,
+                          color: CottagecoreColors.forest,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Elige una contraseña nueva para tu cuenta.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: CottagecoreColors.warmBrown),
+                      ),
+                      const SizedBox(height: 24),
+                      TextFormField(
+                        controller: _password,
+                        obscureText: _obscurePassword,
+                        autofillHints: const [AutofillHints.newPassword],
+                        decoration: InputDecoration(
+                          labelText: 'Nueva contraseña',
+                          suffixIcon: IconButton(
+                            tooltip: _obscurePassword
+                                ? 'Mostrar contraseña'
+                                : 'Ocultar contraseña',
+                            onPressed: () => setState(
+                                () => _obscurePassword = !_obscurePassword),
+                            icon: Icon(_obscurePassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined),
+                          ),
+                        ),
+                        validator: (value) => (value ?? '').length >= 6
+                            ? null
+                            : 'Usa al menos 6 caracteres',
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _confirmation,
+                        obscureText: _obscureConfirmation,
+                        autofillHints: const [AutofillHints.newPassword],
+                        decoration: InputDecoration(
+                          labelText: 'Confirmar contraseña',
+                          suffixIcon: IconButton(
+                            tooltip: _obscureConfirmation
+                                ? 'Mostrar contraseña'
+                                : 'Ocultar contraseña',
+                            onPressed: () => setState(() =>
+                                _obscureConfirmation = !_obscureConfirmation),
+                            icon: Icon(_obscureConfirmation
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined),
+                          ),
+                        ),
+                        validator: (value) => value == _password.text
+                            ? null
+                            : 'Las contraseñas no coinciden',
+                      ),
+                      const SizedBox(height: 22),
+                      FilledButton.icon(
+                        onPressed: _isLoading ? null : _savePassword,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: CottagecoreColors.forest,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
+                        icon: _isLoading
+                            ? const SizedBox.square(
+                                dimension: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.check_rounded),
+                        label: const Text('Guardar contraseña'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
 }

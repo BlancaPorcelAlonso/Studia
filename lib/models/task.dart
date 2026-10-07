@@ -18,6 +18,42 @@ class DueInfo {
   });
 }
 
+class TaskCheckItem {
+  const TaskCheckItem({
+    required this.id,
+    required this.text,
+    this.isChecked = false,
+  });
+
+  final String id;
+  final String text;
+  final bool isChecked;
+
+  TaskCheckItem copyWith({
+    String? id,
+    String? text,
+    bool? isChecked,
+  }) {
+    return TaskCheckItem(
+      id: id ?? this.id,
+      text: text ?? this.text,
+      isChecked: isChecked ?? this.isChecked,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'text': text,
+        'isChecked': isChecked,
+      };
+
+  factory TaskCheckItem.fromJson(Map<String, dynamic> json) => TaskCheckItem(
+        id: json['id'] as String? ?? '',
+        text: json['text'] as String? ?? '',
+        isChecked: json['isChecked'] as bool? ?? false,
+      );
+}
+
 class Task {
   const Task({
     required this.id,
@@ -33,6 +69,7 @@ class Task {
     this.notes,
     this.links = const [],
     this.files = const [],
+    this.checklist = const [],
     this.linkedExamId,
     this.linkedDeliverableId,
   });
@@ -50,8 +87,17 @@ class Task {
   final String? notes;
   final List<String> links;
   final List<String> files;
+  final List<TaskCheckItem> checklist;
   final String? linkedExamId;
   final String? linkedDeliverableId;
+
+  int get totalCheckItems => checklist.length;
+  int get completedCheckItems =>
+      checklist.where((item) => item.isChecked).length;
+  double get checklistProgress =>
+      totalCheckItems == 0 ? 0.0 : completedCheckItems / totalCheckItems;
+  String get checklistProgressLabel =>
+      '$completedCheckItems de $totalCheckItems completadas · ${(checklistProgress * 100).round()}%';
 
   String get statusLabel {
     switch (status) {
@@ -169,6 +215,7 @@ class Task {
     String? notes,
     List<String>? links,
     List<String>? files,
+    List<TaskCheckItem>? checklist,
     String? linkedExamId,
     String? linkedDeliverableId,
   }) {
@@ -186,6 +233,7 @@ class Task {
       notes: notes ?? this.notes,
       links: links ?? this.links,
       files: files ?? this.files,
+      checklist: checklist ?? this.checklist,
       linkedExamId: linkedExamId ?? this.linkedExamId,
       linkedDeliverableId: linkedDeliverableId ?? this.linkedDeliverableId,
     );
@@ -205,6 +253,7 @@ class Task {
         'notes': notes,
         'links': links,
         'files': files,
+        'checklist': checklist.map((item) => item.toJson()).toList(),
         'linkedExamId': linkedExamId,
         'linkedDeliverableId': linkedDeliverableId,
       };
@@ -240,6 +289,11 @@ class Task {
             const [],
         files: (json['files'] as List<dynamic>?)
                 ?.map((e) => e as String)
+                .toList() ??
+            const [],
+        checklist: (json['checklist'] as List<dynamic>?)
+                ?.map((e) => TaskCheckItem.fromJson(
+                    Map<String, dynamic>.from(e as Map)))
                 .toList() ??
             const [],
         linkedExamId: json['linkedExamId'] as String?,
