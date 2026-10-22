@@ -213,6 +213,46 @@ class _DeliverableFormModalState extends State<DeliverableFormModal> {
       subtitle: isEditing
           ? 'Actualiza los detalles o el estado de entrega'
           : 'Añade una fecha de trabajo, práctica o proyecto',
+      actions: Row(
+        children: [
+          if (isEditing)
+            IconButton.outlined(
+              icon: const Icon(Icons.delete_outline_rounded,
+                  color: CottagecoreColors.urgentRed),
+              tooltip: 'Eliminar entrega',
+              onPressed: _delete,
+              style: IconButton.styleFrom(
+                side: const BorderSide(color: Color(0xFFE2C4B8)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          if (isEditing) const SizedBox(width: 10),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: CottagecoreColors.warmBrown,
+                side: const BorderSide(color: CottagecoreColors.border),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: const Text('Cancelar'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: StudiaPrimaryButton(
+              label: isEditing ? 'Guardar cambios' : 'Crear entrega',
+              icon: isEditing ? Icons.check_rounded : Icons.add_rounded,
+              onPressed: _submit,
+            ),
+          ),
+        ],
+      ),
       child: Form(
         key: _formKey,
         child: Column(
@@ -420,46 +460,6 @@ class _DeliverableFormModalState extends State<DeliverableFormModal> {
             ),
           ],
         ),
-      ),
-      actions: Row(
-        children: [
-          if (isEditing)
-            IconButton.outlined(
-              icon: const Icon(Icons.delete_outline_rounded,
-                  color: CottagecoreColors.urgentRed),
-              tooltip: 'Eliminar entrega',
-              onPressed: _delete,
-              style: IconButton.styleFrom(
-                side: const BorderSide(color: Color(0xFFE2C4B8)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-            ),
-          if (isEditing) const SizedBox(width: 10),
-          Expanded(
-            child: OutlinedButton(
-              onPressed: () => Navigator.of(context).pop(),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: CottagecoreColors.warmBrown,
-                side: const BorderSide(color: CottagecoreColors.border),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              child: const Text('Cancelar'),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: StudiaPrimaryButton(
-              label: isEditing ? 'Guardar cambios' : 'Crear entrega',
-              icon: isEditing ? Icons.check_rounded : Icons.add_rounded,
-              onPressed: _submit,
-            ),
-          ),
-        ],
       ),
     );
   }

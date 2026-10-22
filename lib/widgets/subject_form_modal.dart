@@ -110,6 +110,32 @@ class _SubjectFormModalState extends State<SubjectFormModal> {
       subtitle: isEditing
           ? 'Modifica los datos, colores u horarios de la materia'
           : 'Añade una asignatura a tu plan de estudio',
+      actions: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: CottagecoreColors.warmBrown,
+                side: const BorderSide(color: CottagecoreColors.border),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: const Text('Cancelar'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: StudiaPrimaryButton(
+              label: isEditing ? 'Guardar cambios' : 'Crear asignatura',
+              icon: isEditing ? Icons.check_rounded : Icons.add_rounded,
+              onPressed: _submit,
+            ),
+          ),
+        ],
+      ),
       child: Form(
         key: _formKey,
         child: Column(
@@ -228,32 +254,6 @@ class _SubjectFormModalState extends State<SubjectFormModal> {
             const SizedBox(height: 10),
           ],
         ),
-      ),
-      actions: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton(
-              onPressed: () => Navigator.of(context).pop(),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: CottagecoreColors.warmBrown,
-                side: const BorderSide(color: CottagecoreColors.border),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              child: const Text('Cancelar'),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: StudiaPrimaryButton(
-              label: isEditing ? 'Guardar cambios' : 'Crear asignatura',
-              icon: isEditing ? Icons.check_rounded : Icons.add_rounded,
-              onPressed: _submit,
-            ),
-          ),
-        ],
       ),
     );
   }

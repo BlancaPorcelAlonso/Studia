@@ -782,7 +782,7 @@ class _TaskFormModalState extends State<TaskFormModal> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
-                  value: _linkedExamId,
+                  initialValue: _linkedExamId,
                   decoration: const InputDecoration(
                       labelText: 'Vincular a examen (opcional)'),
                   items: [
@@ -799,7 +799,7 @@ class _TaskFormModalState extends State<TaskFormModal> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
-                  value: _linkedDeliverableId,
+                  initialValue: _linkedDeliverableId,
                   decoration: const InputDecoration(
                       labelText: 'Vincular a entrega (opcional)'),
                   items: [
