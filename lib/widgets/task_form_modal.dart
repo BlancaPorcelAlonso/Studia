@@ -211,7 +211,8 @@ class _TaskFormModalState extends State<TaskFormModal> {
     setState(() => _pendingFiles.addAll(files));
   }
 
-  String? _fileMimeType(String? extension) => switch (extension?.toLowerCase()) {
+  String? _fileMimeType(String? extension) =>
+      switch (extension?.toLowerCase()) {
         'pdf' => 'application/pdf',
         'jpg' || 'jpeg' => 'image/jpeg',
         'png' => 'image/png',
@@ -222,7 +223,7 @@ class _TaskFormModalState extends State<TaskFormModal> {
       };
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_isSaving || !_formKey.currentState!.validate()) return;
 
     final repo = AgendaRepository.instance;
     setState(() => _isSaving = true);
@@ -248,7 +249,8 @@ class _TaskFormModalState extends State<TaskFormModal> {
         for (var index = 0; index < _pendingFiles.length; index++) {
           final file = _pendingFiles[index];
           final bytes = await file.readAsBytes();
-          final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+          final safeName =
+              file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
           final path = '${user.id}/tasks/$taskId/$index-$safeName';
           await Supabase.instance.client.storage
               .from('agenda-attachments')
@@ -880,12 +882,12 @@ class _TaskFormModalState extends State<TaskFormModal> {
                       borderRadius: BorderRadius.circular(16)),
                 ),
                 icon: _isSaving
-                  ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.check_rounded),
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.check_rounded),
                 label: Text(
                   isEditing ? 'Actualizar tarea' : 'Crear tarea',
                   style: const TextStyle(

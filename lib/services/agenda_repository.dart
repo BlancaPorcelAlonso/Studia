@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,6 +23,7 @@ class AgendaRepository extends ChangeNotifier {
   SupabaseAgendaSync? _cloudSync;
   String? _cloudUserId;
   String? _syncError;
+  Future<void> _syncTail = Future<void>.value();
 
   List<Subject> get subjects => List.unmodifiable(_subjects);
   List<Task> get tasks => List.unmodifiable(_tasks);
@@ -119,6 +121,7 @@ class AgendaRepository extends ChangeNotifier {
   }
 
   Future<void> resetForSignedOut() async {
+    await flushPendingSync();
     _subjects = [];
     _tasks = [];
     _exams = [];
@@ -131,6 +134,14 @@ class AgendaRepository extends ChangeNotifier {
     _initialized = false;
     _syncError = null;
     notifyListeners();
+  }
+
+  Future<void> flushPendingSync() async {
+    while (true) {
+      final pendingSync = _syncTail;
+      await pendingSync;
+      if (identical(pendingSync, _syncTail)) return;
+    }
   }
 
   Subject? getSubjectById(String id) {
@@ -209,25 +220,28 @@ class AgendaRepository extends ChangeNotifier {
   Future<void> deleteTask(String taskId) async {
     _tasks.removeWhere((t) => t.id == taskId);
     await _persistTasks();
-    await _syncRemote(() => _cloudSync?.delete('tasks', taskId));
+    await _syncRemote((cloud) => cloud.delete('tasks', taskId));
     notifyListeners();
   }
 
   // --- Subject Methods ---
 
-  Future<void> addSubject(Subject subject) async {
+  Future<bool> addSubject(Subject subject) async {
     _subjects.add(subject);
-    await _persistSubjects();
+    final synced = await _persistSubjects();
     notifyListeners();
+    return synced;
   }
 
-  Future<void> updateSubject(Subject subject) async {
+  Future<bool> updateSubject(Subject subject) async {
     final index = _subjects.indexWhere((s) => s.id == subject.id);
     if (index != -1) {
       _subjects[index] = subject;
-      await _persistSubjects();
+      final synced = await _persistSubjects();
       notifyListeners();
+      return synced;
     }
+    return false;
   }
 
   Future<void> deleteSubject(String subjectId) async {
@@ -245,25 +259,28 @@ class AgendaRepository extends ChangeNotifier {
     await _persistDeliverables();
     await _persistAbsences();
     await _persistGrades();
-    await _syncRemote(() => _cloudSync?.delete('subjects', subjectId));
+    await _syncRemote((cloud) => cloud.delete('subjects', subjectId));
     notifyListeners();
   }
 
   // --- Exam Methods ---
 
-  Future<void> addExam(Exam exam) async {
+  Future<bool> addExam(Exam exam) async {
     _exams.add(exam);
-    await _persistExams();
+    final synced = await _persistExams();
     notifyListeners();
+    return synced;
   }
 
-  Future<void> updateExam(Exam exam) async {
+  Future<bool> updateExam(Exam exam) async {
     final index = _exams.indexWhere((e) => e.id == exam.id);
     if (index != -1) {
       _exams[index] = exam;
-      await _persistExams();
+      final synced = await _persistExams();
       notifyListeners();
+      return synced;
     }
+    return false;
   }
 
   Future<void> toggleExamTopic(String examId, int topicIndex) async {
@@ -299,7 +316,7 @@ class AgendaRepository extends ChangeNotifier {
   Future<void> deleteExam(String examId) async {
     _exams.removeWhere((e) => e.id == examId);
     await _persistExams();
-    await _syncRemote(() => _cloudSync?.delete('exams', examId));
+    await _syncRemote((cloud) => cloud.delete('exams', examId));
     notifyListeners();
   }
 
@@ -326,25 +343,28 @@ class AgendaRepository extends ChangeNotifier {
   Future<void> deleteNote(String noteId) async {
     _notes.removeWhere((n) => n.id == noteId);
     await _persistNotes();
-    await _syncRemote(() => _cloudSync?.delete('study_notes', noteId));
+    await _syncRemote((cloud) => cloud.delete('study_notes', noteId));
     notifyListeners();
   }
 
   // --- Deliverable Methods ---
 
-  Future<void> addDeliverable(Deliverable deliverable) async {
+  Future<bool> addDeliverable(Deliverable deliverable) async {
     _deliverables.add(deliverable);
-    await _persistDeliverables();
+    final synced = await _persistDeliverables();
     notifyListeners();
+    return synced;
   }
 
-  Future<void> updateDeliverable(Deliverable deliverable) async {
+  Future<bool> updateDeliverable(Deliverable deliverable) async {
     final index = _deliverables.indexWhere((item) => item.id == deliverable.id);
     if (index != -1) {
       _deliverables[index] = deliverable;
-      await _persistDeliverables();
+      final synced = await _persistDeliverables();
       notifyListeners();
+      return synced;
     }
+    return false;
   }
 
   Future<void> toggleDeliverableSubmitted(String deliverableId) async {
@@ -360,7 +380,7 @@ class AgendaRepository extends ChangeNotifier {
   Future<void> deleteDeliverable(String deliverableId) async {
     _deliverables.removeWhere((item) => item.id == deliverableId);
     await _persistDeliverables();
-    await _syncRemote(() => _cloudSync?.delete('deliverables', deliverableId));
+    await _syncRemote((cloud) => cloud.delete('deliverables', deliverableId));
     notifyListeners();
   }
 
@@ -384,7 +404,7 @@ class AgendaRepository extends ChangeNotifier {
   Future<void> deleteAbsence(String absenceId) async {
     _absences.removeWhere((item) => item.id == absenceId);
     await _persistAbsences();
-    await _syncRemote(() => _cloudSync?.delete('subject_absences', absenceId));
+    await _syncRemote((cloud) => cloud.delete('subject_absences', absenceId));
     notifyListeners();
   }
 
@@ -397,7 +417,7 @@ class AgendaRepository extends ChangeNotifier {
   Future<void> deleteGrade(String gradeId) async {
     _grades.removeWhere((item) => item.id == gradeId);
     await _persistGrades();
-    await _syncRemote(() => _cloudSync?.delete('subject_grades', gradeId));
+    await _syncRemote((cloud) => cloud.delete('subject_grades', gradeId));
     notifyListeners();
   }
 
@@ -411,7 +431,7 @@ class AgendaRepository extends ChangeNotifier {
     _deliverables = [];
     _absences = [];
     _grades = [];
-    await _syncRemote(() => _cloudSync?.resetAll());
+    await _syncRemote((cloud) => cloud.resetAll());
     await _persistSubjects();
     await _persistTasks();
     await _persistExams();
@@ -425,64 +445,90 @@ class AgendaRepository extends ChangeNotifier {
   // --- Internal Persistence ---
 
   Future<void> _persistTasks() async {
+    final tasks = List<Task>.of(_tasks);
     final prefs = await SharedPreferences.getInstance();
-    final encoded = _tasks.map((t) => jsonEncode(t.toJson())).toList();
+    final encoded = tasks.map((t) => jsonEncode(t.toJson())).toList();
     await prefs.setStringList('agenda_tasks_v1', encoded);
-    await _syncRemote(() => _cloudSync?.saveTasks(_tasks));
+    await _syncRemote((cloud) => cloud.saveTasks(tasks));
   }
 
-  Future<void> _persistSubjects() async {
+  Future<bool> _persistSubjects() async {
+    final subjects = List<Subject>.of(_subjects);
+    final sync = _syncRemote((cloud) => cloud.saveSubjects(subjects));
     final prefs = await SharedPreferences.getInstance();
-    final encoded = _subjects.map((s) => jsonEncode(s.toJson())).toList();
+    final encoded = subjects.map((s) => jsonEncode(s.toJson())).toList();
     await prefs.setStringList('agenda_subjects_v1', encoded);
-    await _syncRemote(() => _cloudSync?.saveSubjects(_subjects));
+    return sync;
   }
 
-  Future<void> _persistExams() async {
+  Future<bool> _persistExams() async {
+    final exams = List<Exam>.of(_exams);
+    final sync = _syncRemote((cloud) => cloud.saveExams(exams));
     final prefs = await SharedPreferences.getInstance();
-    final encoded = _exams.map((e) => jsonEncode(e.toJson())).toList();
+    final encoded = exams.map((e) => jsonEncode(e.toJson())).toList();
     await prefs.setStringList('agenda_exams_v1', encoded);
-    await _syncRemote(() => _cloudSync?.saveExams(_exams));
+    return sync;
   }
 
   Future<bool> _persistNotes() async {
+    final notes = List<StudyNote>.of(_notes);
+    final sync = _syncRemote((cloud) => cloud.saveNotes(notes));
     final prefs = await SharedPreferences.getInstance();
-    final encoded = _notes.map((n) => jsonEncode(n.toJson())).toList();
+    final encoded = notes.map((n) => jsonEncode(n.toJson())).toList();
     await prefs.setStringList('agenda_notes_v1', encoded);
-    return _syncRemote(() => _cloudSync?.saveNotes(_notes));
+    return sync;
   }
 
-  Future<void> _persistDeliverables() async {
+  Future<bool> _persistDeliverables() async {
+    final deliverables = List<Deliverable>.of(_deliverables);
+    final sync = _syncRemote((cloud) => cloud.saveDeliverables(deliverables));
     final prefs = await SharedPreferences.getInstance();
     final encoded =
-        _deliverables.map((item) => jsonEncode(item.toJson())).toList();
+        deliverables.map((item) => jsonEncode(item.toJson())).toList();
     await prefs.setStringList('agenda_deliverables_v1', encoded);
-    await _syncRemote(() => _cloudSync?.saveDeliverables(_deliverables));
+    return sync;
   }
 
-  Future<void> _persistAbsences() async {
+  Future<bool> _persistAbsences() async {
+    final absences = List<SubjectAbsence>.of(_absences);
+    final sync = _syncRemote((cloud) => cloud.saveAbsences(absences));
     final prefs = await SharedPreferences.getInstance();
-    final encoded = _absences.map((item) => jsonEncode(item.toJson())).toList();
+    final encoded = absences.map((item) => jsonEncode(item.toJson())).toList();
     await prefs.setStringList('agenda_absences_v1', encoded);
-    await _syncRemote(() => _cloudSync?.saveAbsences(_absences));
+    return sync;
   }
 
-  Future<void> _persistGrades() async {
+  Future<bool> _persistGrades() async {
+    final grades = List<SubjectGrade>.of(_grades);
+    final sync = _syncRemote((cloud) => cloud.saveGrades(grades));
     final prefs = await SharedPreferences.getInstance();
-    final encoded = _grades.map((item) => jsonEncode(item.toJson())).toList();
+    final encoded = grades.map((item) => jsonEncode(item.toJson())).toList();
     await prefs.setStringList('agenda_grades_v1', encoded);
-    await _syncRemote(() => _cloudSync?.saveGrades(_grades));
+    return sync;
   }
 
-  Future<bool> _syncRemote(Future<void>? Function() operation) async {
-    if (_cloudSync == null) return true;
+  Future<bool> _syncRemote(
+    Future<void> Function(SupabaseAgendaSync cloud) operation,
+  ) async {
+    final cloud = _cloudSync;
+    if (cloud == null) return true;
+    final previousSync = _syncTail;
+    final completer = Completer<void>();
+    _syncTail = completer.future;
+    await previousSync;
     try {
-      await operation();
-      _syncError = null;
+      if (_syncError != null) {
+        _syncError = null;
+        notifyListeners();
+      }
+      await operation(cloud);
       return true;
     } catch (error) {
       _syncError = error.toString();
+      notifyListeners();
       return false;
+    } finally {
+      completer.complete();
     }
   }
 

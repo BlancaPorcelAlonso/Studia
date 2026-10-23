@@ -27,7 +27,18 @@ class SubjectFormModal extends StatefulWidget {
 
 class _SubjectFormModalState extends State<SubjectFormModal> {
   static const _emojiOptions = [
-    '🌿', '🌱', '📚', '🧪', '🎨', '💻', '🧮', '📖', '🌷', '🍄', '🕯️', '🪶',
+    '🌿',
+    '🌱',
+    '📚',
+    '🧪',
+    '🎨',
+    '💻',
+    '🧮',
+    '📖',
+    '🌷',
+    '🍄',
+    '🕯️',
+    '🪶',
   ];
   static const _colorOptions = [
     (0xFF7EA98B, 'Verde salvia'),
@@ -45,6 +56,7 @@ class _SubjectFormModalState extends State<SubjectFormModal> {
   late String _emoji;
   late int _colorValue;
   late List<ClassSchedule> _schedules;
+  bool _isSaving = false;
 
   bool get isEditing => widget.initialSubject != null;
 
@@ -67,7 +79,7 @@ class _SubjectFormModalState extends State<SubjectFormModal> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_isSaving || !_formKey.currentState!.validate()) return;
     final subject = widget.initialSubject;
     final name = _nameController.text.trim();
     final teacher = _teacherController.text.trim();
@@ -95,12 +107,23 @@ class _SubjectFormModalState extends State<SubjectFormModal> {
             teacher: teacher.isEmpty ? null : teacher,
             schedules: sortedSchedules,
           );
-    if (subject == null) {
-      await AgendaRepository.instance.addSubject(updated);
-    } else {
-      await AgendaRepository.instance.updateSubject(updated);
+    final repo = AgendaRepository.instance;
+    setState(() => _isSaving = true);
+    try {
+      final synced = subject == null
+          ? await repo.addSubject(updated)
+          : await repo.updateSubject(updated);
+      if (!synced) return;
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo guardar la asignatura: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
-    if (mounted) Navigator.of(context).pop();
   }
 
   @override
@@ -129,9 +152,13 @@ class _SubjectFormModalState extends State<SubjectFormModal> {
           const SizedBox(width: 12),
           Expanded(
             child: StudiaPrimaryButton(
-              label: isEditing ? 'Guardar cambios' : 'Crear asignatura',
+              label: _isSaving
+                  ? 'Guardando...'
+                  : isEditing
+                      ? 'Guardar cambios'
+                      : 'Crear asignatura',
               icon: isEditing ? Icons.check_rounded : Icons.add_rounded,
-              onPressed: _submit,
+              onPressed: _isSaving ? null : _submit,
             ),
           ),
         ],
@@ -222,7 +249,8 @@ class _SubjectFormModalState extends State<SubjectFormModal> {
                           color: Color(option.$1),
                           shape: BoxShape.circle,
                           border: selected
-                              ? Border.all(color: CottagecoreColors.forest, width: 2.8)
+                              ? Border.all(
+                                  color: CottagecoreColors.forest, width: 2.8)
                               : Border.all(color: Colors.white, width: 1.5),
                           boxShadow: const [
                             BoxShadow(

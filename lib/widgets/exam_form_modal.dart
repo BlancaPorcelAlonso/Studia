@@ -47,6 +47,7 @@ class _ExamFormModalState extends State<ExamFormModal> {
   late ExamState _state;
   late List<ExamTopic> _topics;
   late List<String> _linkedNoteIds;
+  bool _isSaving = false;
 
   bool get isEditing => widget.initialExam != null;
 
@@ -102,8 +103,8 @@ class _ExamFormModalState extends State<ExamFormModal> {
     });
   }
 
-  void _submit() {
-    if (!_formKey.currentState!.validate()) return;
+  Future<void> _submit() async {
+    if (_isSaving || !_formKey.currentState!.validate()) return;
 
     final repo = AgendaRepository.instance;
     final exam = Exam(
@@ -122,13 +123,21 @@ class _ExamFormModalState extends State<ExamFormModal> {
       linkedNoteIds: _linkedNoteIds,
     );
 
-    if (isEditing) {
-      repo.updateExam(exam);
-    } else {
-      repo.addExam(exam);
+    setState(() => _isSaving = true);
+    try {
+      final synced =
+          isEditing ? await repo.updateExam(exam) : await repo.addExam(exam);
+      if (!mounted || !synced) return;
+      Navigator.of(context).pop();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo guardar el examen: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
-
-    Navigator.of(context).pop();
   }
 
   void _delete() {
@@ -137,7 +146,8 @@ class _ExamFormModalState extends State<ExamFormModal> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('¿Eliminar examen?'),
-        content: const Text('Esta acción eliminará el examen de tu calendario.'),
+        content:
+            const Text('Esta acción eliminará el examen de tu calendario.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -202,9 +212,13 @@ class _ExamFormModalState extends State<ExamFormModal> {
           const SizedBox(width: 12),
           Expanded(
             child: StudiaPrimaryButton(
-              label: isEditing ? 'Guardar examen' : 'Registrar examen',
+              label: _isSaving
+                  ? 'Guardando...'
+                  : isEditing
+                      ? 'Guardar examen'
+                      : 'Registrar examen',
               icon: isEditing ? Icons.check_rounded : Icons.add_rounded,
-              onPressed: _submit,
+              onPressed: _isSaving ? null : _submit,
             ),
           ),
         ],
@@ -245,8 +259,9 @@ class _ExamFormModalState extends State<ExamFormModal> {
                 onChanged: (val) {
                   if (val != null) setState(() => _subjectId = val);
                 },
-                validator: (val) =>
-                    val == null || val.isEmpty ? 'Selecciona una materia' : null,
+                validator: (val) => val == null || val.isEmpty
+                    ? 'Selecciona una materia'
+                    : null,
               ),
             ),
 
@@ -293,7 +308,8 @@ class _ExamFormModalState extends State<ExamFormModal> {
                         .map((note) {
                       return Chip(
                         label: Text(note.title),
-                        avatar: const Icon(Icons.description_outlined, size: 16),
+                        avatar:
+                            const Icon(Icons.description_outlined, size: 16),
                         deleteIcon: const Icon(Icons.close_rounded, size: 16),
                         onDeleted: () {
                           setState(() {
@@ -319,8 +335,8 @@ class _ExamFormModalState extends State<ExamFormModal> {
                         final picked = await showDatePicker(
                           context: context,
                           initialDate: _date,
-                          firstDate: DateTime.now()
-                              .subtract(const Duration(days: 30)),
+                          firstDate:
+                              DateTime.now().subtract(const Duration(days: 30)),
                           lastDate:
                               DateTime.now().add(const Duration(days: 365)),
                         );
@@ -407,7 +423,8 @@ class _ExamFormModalState extends State<ExamFormModal> {
                 style: ButtonStyle(
                   backgroundColor: WidgetStateProperty.resolveWith((states) {
                     if (states.contains(WidgetState.selected)) {
-                      return CottagecoreColors.terracotta.withValues(alpha: 0.2);
+                      return CottagecoreColors.terracotta
+                          .withValues(alpha: 0.2);
                     }
                     return Colors.white;
                   }),

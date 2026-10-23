@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/agenda_repository.dart';
 import '../widgets/desktop_sidebar.dart';
 import '../widgets/task_form_modal.dart';
 import 'calendar_screen.dart';
@@ -22,6 +23,35 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int _desktopIndex = 0;
   int _mobileIndex = 0;
+  String? _lastSyncError;
+
+  @override
+  void initState() {
+    super.initState();
+    AgendaRepository.instance.addListener(_onRepositoryChanged);
+  }
+
+  @override
+  void dispose() {
+    AgendaRepository.instance.removeListener(_onRepositoryChanged);
+    super.dispose();
+  }
+
+  void _onRepositoryChanged() {
+    final error = AgendaRepository.instance.syncError;
+    if (error == _lastSyncError) return;
+    _lastSyncError = error;
+    if (error == null || !mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo sincronizar con Supabase: $error'),
+          duration: const Duration(seconds: 8),
+        ),
+      );
+    });
+  }
 
   // Pages for Desktop sidebar (9 options)
   final List<Widget> _desktopPages = const [

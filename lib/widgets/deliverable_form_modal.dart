@@ -53,6 +53,7 @@ class _DeliverableFormModalState extends State<DeliverableFormModal> {
   late String _subjectId;
   late DateTime _date;
   late bool _isSubmitted;
+  bool _isSaving = false;
 
   bool get isEditing => widget.initialDeliverable != null;
 
@@ -81,8 +82,8 @@ class _DeliverableFormModalState extends State<DeliverableFormModal> {
     super.dispose();
   }
 
-  void _submit() {
-    if (!_formKey.currentState!.validate()) return;
+  Future<void> _submit() async {
+    if (_isSaving || !_formKey.currentState!.validate()) return;
 
     final repo = AgendaRepository.instance;
     final deliverable = Deliverable(
@@ -98,13 +99,22 @@ class _DeliverableFormModalState extends State<DeliverableFormModal> {
       attachments: _attachments,
     );
 
-    if (isEditing) {
-      repo.updateDeliverable(deliverable);
-    } else {
-      repo.addDeliverable(deliverable);
+    setState(() => _isSaving = true);
+    try {
+      final synced = isEditing
+          ? await repo.updateDeliverable(deliverable)
+          : await repo.addDeliverable(deliverable);
+      if (!mounted || !synced) return;
+      Navigator.of(context).pop();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo guardar la entrega: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
-
-    Navigator.of(context).pop();
   }
 
   Future<void> _pickAttachment() async {
@@ -246,9 +256,13 @@ class _DeliverableFormModalState extends State<DeliverableFormModal> {
           const SizedBox(width: 12),
           Expanded(
             child: StudiaPrimaryButton(
-              label: isEditing ? 'Guardar cambios' : 'Crear entrega',
+              label: _isSaving
+                  ? 'Guardando...'
+                  : isEditing
+                      ? 'Guardar cambios'
+                      : 'Crear entrega',
               icon: isEditing ? Icons.check_rounded : Icons.add_rounded,
-              onPressed: _submit,
+              onPressed: _isSaving ? null : _submit,
             ),
           ),
         ],
@@ -369,8 +383,9 @@ class _DeliverableFormModalState extends State<DeliverableFormModal> {
                 onChanged: (val) {
                   if (val != null) setState(() => _subjectId = val);
                 },
-                validator: (val) =>
-                    val == null || val.isEmpty ? 'Selecciona una materia' : null,
+                validator: (val) => val == null || val.isEmpty
+                    ? 'Selecciona una materia'
+                    : null,
               ),
             ),
 
@@ -441,16 +456,16 @@ class _DeliverableFormModalState extends State<DeliverableFormModal> {
                       runSpacing: 8,
                       children: _attachments.map((attachment) {
                         return InputChip(
-                          avatar: const Icon(Icons.attach_file_rounded,
-                              size: 17),
+                          avatar:
+                              const Icon(Icons.attach_file_rounded, size: 17),
                           label: ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: 190),
                             child: Text(attachment.name,
                                 overflow: TextOverflow.ellipsis),
                           ),
                           onPressed: () => _previewAttachment(attachment),
-                          onDeleted: () => setState(
-                              () => _attachments.remove(attachment)),
+                          onDeleted: () =>
+                              setState(() => _attachments.remove(attachment)),
                         );
                       }).toList(),
                     ),

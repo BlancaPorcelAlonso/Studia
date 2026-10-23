@@ -401,16 +401,31 @@ class SupabaseAgendaSync {
 
   Future<void> saveNotes(List<StudyNote> notes) async {
     for (final note in notes) {
-      await client.from('study_notes').upsert({
-        'id': note.id,
-        'user_id': userId,
-        'subject_id': note.subjectId,
-        'title': note.title,
-        'topic': note.topic,
-        'category': note.category,
-        'content': note.content,
-        'updated_at': note.updatedAt.toIso8601String(),
-      });
+      final saved = await client
+          .from('study_notes')
+          .upsert({
+            'id': note.id,
+            'user_id': userId,
+            'subject_id': note.subjectId,
+            'title': note.title,
+            'topic': note.topic,
+            'category': note.category,
+            'content': note.content,
+            'updated_at': note.updatedAt.toIso8601String(),
+          })
+          .select('id, user_id, subject_id, title, topic, category, content')
+          .single();
+      if (saved['id'] != note.id ||
+          saved['user_id'] != userId ||
+          saved['subject_id'] != note.subjectId ||
+          saved['title'] != note.title ||
+          saved['topic'] != note.topic ||
+          saved['category'] != note.category ||
+          saved['content'] != note.content) {
+        throw StateError(
+          'Supabase no confirmó los cambios del apunte "${note.title}".',
+        );
+      }
       await _replaceChildren(
         'note_check_items',
         'note_id',

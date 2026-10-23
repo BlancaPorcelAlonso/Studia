@@ -48,6 +48,7 @@ class _SupabaseGateState extends State<SupabaseGate> {
   Future<void> _handleUser(User? user) async {
     final requestId = ++_requestId;
     if (user == null) {
+      await AgendaRepository.instance.flushPendingSync();
       await AgendaRepository.instance.resetForSignedOut();
       if (!mounted || requestId != _requestId) return;
       setState(() {
@@ -110,7 +111,8 @@ class _SupabaseGateState extends State<SupabaseGate> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.cloud_off_outlined, size: 42, color: CottagecoreColors.terracotta),
+                const Icon(Icons.cloud_off_outlined,
+                    size: 42, color: CottagecoreColors.terracotta),
                 const SizedBox(height: 12),
                 const Text('No se pudieron cargar tus datos.'),
                 const SizedBox(height: 12),

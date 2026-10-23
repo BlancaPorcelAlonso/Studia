@@ -149,23 +149,10 @@ class _NoteFormModalState extends State<NoteFormModal> {
     setState(() => _isSaving = true);
     try {
       final repo = AgendaRepository.instance;
-      final synced = isEditing
-          ? await repo.updateNote(note)
-          : await repo.addNote(note);
+      final synced =
+          isEditing ? await repo.updateNote(note) : await repo.addNote(note);
       if (!mounted) return;
-      if (!synced) {
-        final detail = repo.syncError;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              detail == null
-                  ? 'No se pudo guardar el apunte en la nube. Revisa la conexión y vuelve a intentarlo antes de cerrar sesión.'
-                  : 'No se pudo guardar el apunte en la nube. Revisa la conexión y vuelve a intentarlo antes de cerrar sesión. $detail',
-            ),
-          ),
-        );
-        return;
-      }
+      if (!synced) return;
       Navigator.of(context).pop();
     } catch (error) {
       if (!mounted) return;
@@ -342,12 +329,16 @@ class _NoteFormModalState extends State<NoteFormModal> {
                           : 'Resumen',
                       decoration: const InputDecoration(),
                       items: const [
-                        DropdownMenuItem(value: 'Resumen', child: Text('Resumen')),
+                        DropdownMenuItem(
+                            value: 'Resumen', child: Text('Resumen')),
                         DropdownMenuItem(
                             value: 'Cuestionario', child: Text('Cuestionario')),
-                        DropdownMenuItem(value: 'Esquema', child: Text('Esquema')),
-                        DropdownMenuItem(value: 'Apuntes', child: Text('Apuntes')),
-                        DropdownMenuItem(value: 'Código', child: Text('Código')),
+                        DropdownMenuItem(
+                            value: 'Esquema', child: Text('Esquema')),
+                        DropdownMenuItem(
+                            value: 'Apuntes', child: Text('Apuntes')),
+                        DropdownMenuItem(
+                            value: 'Código', child: Text('Código')),
                       ],
                       onChanged: (val) {
                         if (val != null) _categoryController.text = val;
@@ -412,7 +403,8 @@ class _NoteFormModalState extends State<NoteFormModal> {
                     Expanded(
                       child: Text(
                         'Sin archivos adjuntos. Puedes subir PDFs, imágenes o apuntes.',
-                        style: TextStyle(fontSize: 12, color: Color(0xFF7A6F62)),
+                        style:
+                            TextStyle(fontSize: 12, color: Color(0xFF7A6F62)),
                       ),
                     ),
                   ],

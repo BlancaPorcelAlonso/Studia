@@ -61,6 +61,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<void> _signOut() async {
+    await AgendaRepository.instance.flushPendingSync();
+    await Supabase.instance.client.auth.signOut();
+  }
+
   @override
   Widget build(BuildContext context) {
     final repo = AgendaRepository.instance;
@@ -101,14 +106,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       _settingRow(
                         title: 'Tema Visual',
-                        subtitle: 'Cottagecore cálido (Fondo crema, verde salvia, terracota)',
-                        trailing: const Icon(Icons.check_circle_rounded, color: CottagecoreColors.sage),
+                        subtitle:
+                            'Cottagecore cálido (Fondo crema, verde salvia, terracota)',
+                        trailing: const Icon(Icons.check_circle_rounded,
+                            color: CottagecoreColors.sage),
                       ),
                       const Divider(height: 20),
                       _settingRow(
                         title: 'Tipografía de lectura',
-                        subtitle: 'Serifa para títulos botánicos y palo seco para legibilidad de tareas',
-                        trailing: const Text('Óptima', style: TextStyle(fontWeight: FontWeight.w700)),
+                        subtitle:
+                            'Serifa para títulos botánicos y palo seco para legibilidad de tareas',
+                        trailing: const Text('Óptima',
+                            style: TextStyle(fontWeight: FontWeight.w700)),
                       ),
                     ],
                   ),
@@ -125,34 +134,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
-                        title: const Text('Recordatorios automáticos', style: TextStyle(fontWeight: FontWeight.w700)),
-                        subtitle: const Text('Alertas preventivas de entregas y exámenes'),
+                        title: const Text('Recordatorios automáticos',
+                            style: TextStyle(fontWeight: FontWeight.w700)),
+                        subtitle: const Text(
+                            'Alertas preventivas de entregas y exámenes'),
                         activeThumbColor: CottagecoreColors.forest,
                         value: _enableNotifications,
-                        onChanged: (v) => setState(() => _enableNotifications = v),
+                        onChanged: (v) =>
+                            setState(() => _enableNotifications = v),
                       ),
                       if (_enableNotifications) ...[
                         const Divider(height: 16),
                         CheckboxListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: const Text('Avisar el día previo (Mañana entregas...)'),
+                          title: const Text(
+                              'Avisar el día previo (Mañana entregas...)'),
                           activeColor: CottagecoreColors.calmGreen,
                           value: _notify1DayBefore,
-                          onChanged: (v) => setState(() => _notify1DayBefore = v ?? true),
+                          onChanged: (v) =>
+                              setState(() => _notify1DayBefore = v ?? true),
                         ),
                         CheckboxListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: const Text('Avisar con 3 días de antelación (Te quedan 3 días...)'),
+                          title: const Text(
+                              'Avisar con 3 días de antelación (Te quedan 3 días...)'),
                           activeColor: CottagecoreColors.calmGreen,
                           value: _notify3DaysBefore,
-                          onChanged: (v) => setState(() => _notify3DaysBefore = v ?? true),
+                          onChanged: (v) =>
+                              setState(() => _notify3DaysBefore = v ?? true),
                         ),
                         CheckboxListTile(
                           contentPadding: EdgeInsets.zero,
-                          title: const Text('Avisar exámenes con 5 días de margen (Examen en 5 días...)'),
+                          title: const Text(
+                              'Avisar exámenes con 5 días de margen (Examen en 5 días...)'),
                           activeColor: CottagecoreColors.calmGreen,
                           value: _notifyExams5DaysBefore,
-                          onChanged: (v) => setState(() => _notifyExams5DaysBefore = v ?? true),
+                          onChanged: (v) => setState(
+                              () => _notifyExams5DaysBefore = v ?? true),
                         ),
                         const SizedBox(height: 8),
                         Container(
@@ -167,7 +185,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               Expanded(
                                 child: Text(
                                   'Ejemplo: "🌿 Mañana entregas Actividad 2 de Dart (Programación)."',
-                                  style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Color(0xFF6B6053)),
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      fontStyle: FontStyle.italic,
+                                      color: Color(0xFF6B6053)),
                                 ),
                               ),
                             ],
@@ -193,18 +214,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: CottagecoreColors.sage.withValues(alpha: 0.15),
+                            color:
+                                CottagecoreColors.sage.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Center(child: Text('📚', style: TextStyle(fontSize: 20))),
+                          child: const Center(
+                              child:
+                                  Text('📚', style: TextStyle(fontSize: 20))),
                         ),
-                        title: const Text('Administrar asignaturas', style: TextStyle(fontWeight: FontWeight.w700)),
-                        subtitle: Text('${repo.subjects.length} materias configuradas con colores e iconos'),
-                        trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                        title: const Text('Administrar asignaturas',
+                            style: TextStyle(fontWeight: FontWeight.w700)),
+                        subtitle: Text(
+                            '${repo.subjects.length} materias configuradas con colores e iconos'),
+                        trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                            size: 16),
                         onTap: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => const SubjectsScreen()),
+                            MaterialPageRoute(
+                                builder: (_) => const SubjectsScreen()),
                           );
                         },
                       ),
@@ -257,7 +285,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           contentPadding: EdgeInsets.zero,
                           leading: const Icon(Icons.logout_rounded),
                           title: const Text('Cerrar sesión'),
-                          onTap: () => Supabase.instance.client.auth.signOut(),
+                          onTap: _signOut,
                         ),
                       ],
                       const Divider(height: 20),
@@ -306,8 +334,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       _settingRow(
                         title: 'Versión del Sistema',
-                        subtitle: 'Agenda Cottagecore v1.0.2 (Flutter Multiplataforma)',
-                        trailing: const Text('V1 Lista', style: TextStyle(fontWeight: FontWeight.w700, color: CottagecoreColors.forest)),
+                        subtitle:
+                            'Agenda Cottagecore v1.0.2 (Flutter Multiplataforma)',
+                        trailing: const Text('V1 Lista',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: CottagecoreColors.forest)),
                       ),
                     ],
                   ),
@@ -345,9 +377,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+              Text(title,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 14)),
               const SizedBox(height: 3),
-              Text(subtitle, style: const TextStyle(fontSize: 12, color: Color(0xFF7A6F62))),
+              Text(subtitle,
+                  style:
+                      const TextStyle(fontSize: 12, color: Color(0xFF7A6F62))),
             ],
           ),
         ),
