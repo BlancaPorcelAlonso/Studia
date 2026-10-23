@@ -47,6 +47,7 @@ class _NoteFormModalState extends State<NoteFormModal> {
   late String _subjectId;
   late List<NoteCheckItem> _checklist;
   late List<NoteAttachment> _attachments;
+  bool _isSaving = false;
 
   bool get isEditing => widget.initialNote != null;
 
@@ -120,10 +121,9 @@ class _NoteFormModalState extends State<NoteFormModal> {
     });
   }
 
-  void _submit() {
-    if (!_formKey.currentState!.validate()) return;
+  Future<void> _submit() async {
+    if (_isSaving || !_formKey.currentState!.validate()) return;
 
-    final repo = AgendaRepository.instance;
     final tags = _tagsController.text
         .split(',')
         .map((s) => s.trim())
@@ -146,13 +146,35 @@ class _NoteFormModalState extends State<NoteFormModal> {
       attachments: _attachments,
     );
 
-    if (isEditing) {
-      repo.updateNote(note);
-    } else {
-      repo.addNote(note);
+    setState(() => _isSaving = true);
+    try {
+      final repo = AgendaRepository.instance;
+      final synced = isEditing
+          ? await repo.updateNote(note)
+          : await repo.addNote(note);
+      if (!mounted) return;
+      if (!synced) {
+        final detail = repo.syncError;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              detail == null
+                  ? 'No se pudo guardar el apunte en la nube. Revisa la conexión y vuelve a intentarlo antes de cerrar sesión.'
+                  : 'No se pudo guardar el apunte en la nube. Revisa la conexión y vuelve a intentarlo antes de cerrar sesión. $detail',
+            ),
+          ),
+        );
+        return;
+      }
+      Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo guardar el apunte: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
-
-    Navigator.of(context).pop();
   }
 
   void _delete() {
@@ -225,9 +247,13 @@ class _NoteFormModalState extends State<NoteFormModal> {
           const SizedBox(width: 12),
           Expanded(
             child: StudiaPrimaryButton(
-              label: isEditing ? 'Guardar cambios' : 'Crear apunte',
+              label: _isSaving
+                  ? 'Guardando...'
+                  : isEditing
+                      ? 'Guardar cambios'
+                      : 'Crear apunte',
               icon: isEditing ? Icons.check_rounded : Icons.add_rounded,
-              onPressed: _submit,
+              onPressed: _isSaving ? null : _submit,
             ),
           ),
         ],

@@ -244,7 +244,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                'No se pudo sincronizar. Los cambios siguen guardados en este dispositivo. ${repo.syncError}',
+                                'No se pudo sincronizar. Los cambios guardados solo en este dispositivo podrían no estar disponibles al volver a iniciar sesión. Revisa la conexión antes de cerrar sesión. ${repo.syncError}',
                                 style: const TextStyle(fontSize: 12),
                               ),
                             ),

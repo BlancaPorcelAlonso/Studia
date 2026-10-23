@@ -305,19 +305,22 @@ class AgendaRepository extends ChangeNotifier {
 
   // --- Note Methods ---
 
-  Future<void> addNote(StudyNote note) async {
+  Future<bool> addNote(StudyNote note) async {
     _notes.insert(0, note);
-    await _persistNotes();
+    final synced = await _persistNotes();
     notifyListeners();
+    return synced;
   }
 
-  Future<void> updateNote(StudyNote note) async {
+  Future<bool> updateNote(StudyNote note) async {
     final index = _notes.indexWhere((n) => n.id == note.id);
     if (index != -1) {
       _notes[index] = note;
-      await _persistNotes();
+      final synced = await _persistNotes();
       notifyListeners();
+      return synced;
     }
+    return false;
   }
 
   Future<void> deleteNote(String noteId) async {
@@ -442,11 +445,11 @@ class AgendaRepository extends ChangeNotifier {
     await _syncRemote(() => _cloudSync?.saveExams(_exams));
   }
 
-  Future<void> _persistNotes() async {
+  Future<bool> _persistNotes() async {
     final prefs = await SharedPreferences.getInstance();
     final encoded = _notes.map((n) => jsonEncode(n.toJson())).toList();
     await prefs.setStringList('agenda_notes_v1', encoded);
-    await _syncRemote(() => _cloudSync?.saveNotes(_notes));
+    return _syncRemote(() => _cloudSync?.saveNotes(_notes));
   }
 
   Future<void> _persistDeliverables() async {
@@ -471,13 +474,15 @@ class AgendaRepository extends ChangeNotifier {
     await _syncRemote(() => _cloudSync?.saveGrades(_grades));
   }
 
-  Future<void> _syncRemote(Future<void>? Function() operation) async {
-    if (_cloudSync == null) return;
+  Future<bool> _syncRemote(Future<void>? Function() operation) async {
+    if (_cloudSync == null) return true;
     try {
       await operation();
       _syncError = null;
+      return true;
     } catch (error) {
       _syncError = error.toString();
+      return false;
     }
   }
 
