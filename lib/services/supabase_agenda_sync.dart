@@ -291,7 +291,7 @@ class SupabaseAgendaSync {
 
   Future<void> saveTasks(List<Task> tasks) async {
     for (final task in tasks) {
-      await client.from('tasks').upsert({
+      final taskRow = {
         'id': task.id,
         'user_id': userId,
         'subject_id': task.subjectId,
@@ -306,7 +306,20 @@ class SupabaseAgendaSync {
         'notes': task.notes,
         'linked_exam_id': task.linkedExamId,
         'linked_deliverable_id': task.linkedDeliverableId,
-      });
+      };
+      try {
+        await client.from('tasks').upsert(taskRow);
+      } on PostgrestException catch (error) {
+        final missingDeliverableColumn = error.code == 'PGRST204' &&
+            error.message.contains(
+              "Could not find the 'linked_deliverable_id' column of 'tasks'",
+            );
+        if (!missingDeliverableColumn || task.linkedDeliverableId != null) {
+          rethrow;
+        }
+        taskRow.remove('linked_deliverable_id');
+        await client.from('tasks').upsert(taskRow);
+      }
       await _replaceChildren(
         'task_links',
         'task_id',

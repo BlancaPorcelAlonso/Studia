@@ -33,7 +33,7 @@ flutter run -d chrome --dart-define=SUPABASE_URL=https://tu-proyecto.supabase.co
 
 La configuración de Supabase está en `lib/services/supabase_config.dart`. La clave publishable configurada allí es una clave de cliente; las políticas de acceso y permisos de los datos deben configurarse en Supabase.
 
-Antes de desplegar las funciones de checklist y adjuntos, aplica los scripts SQL de `supabase/` desde el editor SQL de tu proyecto. El script de adjuntos configura el bucket privado `agenda-attachments` y restringe sus archivos a la carpeta identificada con el ID del usuario.
+Antes de desplegar las funciones de checklist, adjuntos y relaciones entre tareas y entregas, aplica los scripts SQL de `supabase/` desde el editor SQL de tu proyecto. El script `schema_task_deliverable_link.sql` añade a `tasks` la columna `linked_deliverable_id`; sin esta migración, las tareas normales se guardan igualmente, pero no se pueden vincular tareas a entregas. El script de adjuntos configura el bucket privado `agenda-attachments` y restringe sus archivos a la carpeta identificada con el ID del usuario.
 
 Para permitir la recuperación de contraseña, añade `https://your-studia.netlify.app/` a las URL de redirección permitidas en **Supabase > Authentication > URL Configuration**. Añade también las URL locales que utilices para probar.
 
