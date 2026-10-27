@@ -254,6 +254,183 @@ class SupabaseAgendaSync {
     );
   }
 
+  Future<void> migrateLocalNotes(
+    List<StudyNote> localNotes,
+    List<Subject> localSubjects,
+  ) async {
+    if (localNotes.isEmpty) return;
+
+    final subjectRows = await _rows('subjects');
+    final subjectIds = subjectRows.map((row) => row['id'] as String).toSet();
+    final localSubjectsById = {
+      for (final subject in localSubjects) subject.id: subject,
+    };
+    final subjectIdMap = <String, String>{};
+    final missingSubjectIds = localNotes
+        .map((note) => note.subjectId)
+        .where((id) => !subjectIds.contains(id))
+        .toSet();
+    for (final subjectId in missingSubjectIds) {
+      final localSubject = localSubjectsById[subjectId];
+      if (localSubject == null) {
+        throw StateError(
+          'No se encontró una asignatura local necesaria para migrar un apunte.',
+        );
+      }
+      try {
+        await saveSubjects([localSubject]);
+        subjectIds.add(subjectId);
+      } catch (error) {
+        if (!_isDuplicateKey(error)) rethrow;
+        var suffix = 0;
+        while (true) {
+          final candidateId =
+              '${subjectId}_local_migration_$userId${suffix == 0 ? '' : '_$suffix'}';
+          if (subjectIds.contains(candidateId)) {
+            subjectIdMap[subjectId] = candidateId;
+            break;
+          }
+          try {
+            await saveSubjects([localSubject.copyWith(id: candidateId)]);
+            subjectIds.add(candidateId);
+            subjectIdMap[subjectId] = candidateId;
+            break;
+          } catch (candidateError) {
+            if (!_isDuplicateKey(candidateError)) rethrow;
+            suffix++;
+          }
+        }
+      }
+    }
+
+    final rows = await _rows('study_notes');
+    final rowsById = {for (final row in rows) row['id'] as String: row};
+    noteLoop:
+    for (final sourceNote in localNotes) {
+      final localNote = sourceNote.copyWith(
+        subjectId: subjectIdMap[sourceNote.subjectId] ?? sourceNote.subjectId,
+      );
+      var destination = localNote;
+      final existing = rowsById[localNote.id];
+      DateTime? expectedUpdatedAt;
+      var insertOnly = existing == null;
+      if (existing != null) {
+        final cloudUpdatedAt = _date(existing['updated_at']);
+        if (_sameNoteContent(existing, localNote)) {
+          if (localNote.updatedAt.isAfter(cloudUpdatedAt)) {
+            expectedUpdatedAt = cloudUpdatedAt;
+            insertOnly = false;
+          } else if (localNote.updatedAt.isBefore(cloudUpdatedAt) ||
+              await _matchesNote(localNote)) {
+            continue noteLoop;
+          } else {
+            expectedUpdatedAt = cloudUpdatedAt;
+            insertOnly = false;
+          }
+        } else if (localNote.updatedAt.isAfter(cloudUpdatedAt)) {
+          expectedUpdatedAt = cloudUpdatedAt;
+          insertOnly = false;
+        } else {
+          var suffix = 1;
+          while (true) {
+            final candidateId =
+                '${localNote.id}_local_migration_${userId}_$suffix';
+            final candidate = rowsById[candidateId];
+            if (candidate == null) {
+              destination = localNote.copyWith(id: candidateId);
+              insertOnly = true;
+              break;
+            }
+            if (_sameNoteContent(candidate, localNote)) {
+              final candidateUpdatedAt = _date(candidate['updated_at']);
+              if (candidateUpdatedAt.isAfter(localNote.updatedAt) ||
+                  (candidateUpdatedAt == localNote.updatedAt &&
+                      await _matchesNote(
+                        localNote.copyWith(id: candidateId),
+                      ))) {
+                continue noteLoop;
+              }
+              destination = localNote.copyWith(
+                id: candidateId,
+                updatedAt: candidateUpdatedAt,
+              );
+              expectedUpdatedAt = candidateUpdatedAt;
+              insertOnly = false;
+              break;
+            }
+            suffix++;
+          }
+        }
+      }
+
+      try {
+        await saveNote(
+          destination,
+          expectedUpdatedAt: expectedUpdatedAt,
+          insertOnly: insertOnly,
+        );
+      } catch (error) {
+        if (!_isDuplicateKey(error) || expectedUpdatedAt != null) rethrow;
+        var suffix = 0;
+        while (true) {
+          final candidateId =
+              '${localNote.id}_local_migration_$userId${suffix == 0 ? '' : '_$suffix'}';
+          final candidate = rowsById[candidateId];
+          if (candidate != null && _sameNoteContent(candidate, localNote)) {
+            destination = localNote.copyWith(
+              id: candidateId,
+              updatedAt: _date(candidate['updated_at']),
+            );
+            expectedUpdatedAt = _date(candidate['updated_at']);
+            await saveNote(
+              destination,
+              expectedUpdatedAt: expectedUpdatedAt,
+            );
+            break;
+          }
+          if (candidate == null) {
+            destination = localNote.copyWith(id: candidateId);
+            try {
+              await saveNote(destination, insertOnly: true);
+              break;
+            } catch (candidateError) {
+              if (!_isDuplicateKey(candidateError)) rethrow;
+            }
+          }
+          suffix++;
+        }
+      }
+      rowsById[destination.id] = {
+        'id': destination.id,
+        'subject_id': destination.subjectId,
+        'title': destination.title,
+        'topic': destination.topic,
+        'category': destination.category,
+        'content': destination.content,
+        'updated_at': destination.updatedAt.toIso8601String(),
+      };
+    }
+  }
+
+  bool _isDuplicateKey(Object error) =>
+      error is PostgrestException && error.code == '23505';
+
+  Future<bool> _matchesNote(StudyNote note) async {
+    try {
+      await _verifyNote(note);
+      return true;
+    } on StateError {
+      return false;
+    }
+  }
+
+  bool _sameNoteContent(Map<String, dynamic> row, StudyNote note) =>
+      row['subject_id'] == note.subjectId &&
+      row['title'] == note.title &&
+      row['topic'] == note.topic &&
+      row['category'] == note.category &&
+      row['content'] == note.content;
+
   Future<void> saveSubjects(List<Subject> subjects) async {
     for (final subject in subjects) {
       await client.from('subjects').upsert({
@@ -277,7 +454,7 @@ class SupabaseAgendaSync {
             .asMap()
             .entries
             .map((entry) => {
-                  'id': '${subject.id}-schedule-${entry.key}',
+                  'id': '$userId-${subject.id}-schedule-${entry.key}',
                   'user_id': userId,
                   'subject_id': subject.id,
                   'weekday': entry.value.weekday,
@@ -414,79 +591,218 @@ class SupabaseAgendaSync {
 
   Future<void> saveNotes(List<StudyNote> notes) async {
     for (final note in notes) {
-      final saved = await client
+      await saveNote(note);
+    }
+  }
+
+  Future<void> saveNote(
+    StudyNote note, {
+    DateTime? expectedUpdatedAt,
+    bool insertOnly = false,
+  }) async {
+    final values = {
+      'user_id': userId,
+      'subject_id': note.subjectId,
+      'title': note.title,
+      'topic': note.topic,
+      'category': note.category,
+      'content': note.content,
+      'updated_at': note.updatedAt.toIso8601String(),
+    };
+    final Map<String, dynamic>? saved;
+    if (expectedUpdatedAt != null) {
+      saved = await client
           .from('study_notes')
-          .upsert({
-            'id': note.id,
-            'user_id': userId,
-            'subject_id': note.subjectId,
-            'title': note.title,
-            'topic': note.topic,
-            'category': note.category,
-            'content': note.content,
-            'updated_at': note.updatedAt.toIso8601String(),
-          })
+          .update(values)
+          .eq('user_id', userId)
+          .eq('id', note.id)
+          .eq('updated_at', expectedUpdatedAt.toIso8601String())
           .select('id, user_id, subject_id, title, topic, category, content')
-          .single();
-      if (saved['id'] != note.id ||
-          saved['user_id'] != userId ||
-          saved['subject_id'] != note.subjectId ||
-          saved['title'] != note.title ||
-          saved['topic'] != note.topic ||
-          saved['category'] != note.category ||
-          saved['content'] != note.content) {
+          .maybeSingle();
+      if (saved == null) {
         throw StateError(
-          'Supabase no confirmó los cambios del apunte "${note.title}".',
+          'El apunte "${note.title}" cambió en otro dispositivo. '
+          'Vuelve a cargarlo antes de guardar para no sobrescribir cambios.',
         );
       }
-      await _replaceChildren(
-        'note_check_items',
-        'note_id',
-        note.id,
-        note.checklist
-            .asMap()
-            .entries
-            .map((entry) => {
-                  'id': '${note.id}-check-${entry.key}',
-                  'user_id': userId,
-                  'note_id': note.id,
-                  'text': entry.value.text,
-                  'is_checked': entry.value.isChecked,
-                  'position': entry.key,
-                })
-            .toList(),
+    } else if (insertOnly) {
+      saved = await client
+          .from('study_notes')
+          .insert({'id': note.id, ...values})
+          .select('id, user_id, subject_id, title, topic, category, content')
+          .maybeSingle();
+    } else {
+      saved = await client
+          .from('study_notes')
+          .upsert({'id': note.id, ...values})
+          .select('id, user_id, subject_id, title, topic, category, content')
+          .maybeSingle();
+    }
+    if (saved == null ||
+        saved['id'] != note.id ||
+        saved['user_id'] != userId ||
+        saved['subject_id'] != note.subjectId ||
+        saved['title'] != note.title ||
+        saved['topic'] != note.topic ||
+        saved['category'] != note.category ||
+        saved['content'] != note.content) {
+      throw StateError(
+        'Supabase no confirmó los cambios del apunte "${note.title}".',
       );
-      await _replaceTags(note);
-      final attachmentRows = <Map<String, dynamic>>[];
-      for (var index = 0; index < note.attachments.length; index++) {
-        final attachment = note.attachments[index];
-        var path = attachment.storagePath;
-        if (attachment.bytesBase64.isNotEmpty) {
-          final safeName =
-              attachment.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-          path = '$userId/notes/${note.id}/$index-$safeName';
-          await client.storage.from('agenda-attachments').uploadBinary(
-                path,
-                base64Decode(attachment.bytesBase64),
-                fileOptions: FileOptions(
-                  upsert: true,
-                  contentType: attachment.mimeType,
-                ),
-              );
-        }
-        if (path == null) continue;
-        attachmentRows.add({
-          'id': '${note.id}-attachment-$index',
-          'user_id': userId,
-          'note_id': note.id,
-          'name': attachment.name,
-          'storage_path': path,
-          'size_bytes': attachment.sizeBytes,
-          'mime_type': attachment.mimeType,
-        });
+    }
+
+    await _replaceChildren(
+      'note_check_items',
+      'note_id',
+      note.id,
+      note.checklist
+          .asMap()
+          .entries
+          .map((entry) => {
+                'id': '$userId-${note.id}-check-${entry.key}',
+                'user_id': userId,
+                'note_id': note.id,
+                'text': entry.value.text,
+                'is_checked': entry.value.isChecked,
+                'position': entry.key,
+              })
+          .toList(),
+    );
+    await _replaceTags(note);
+    final attachmentRows = <Map<String, dynamic>>[];
+    for (var index = 0; index < note.attachments.length; index++) {
+      final attachment = note.attachments[index];
+      var path = attachment.storagePath;
+      if (attachment.bytesBase64.isNotEmpty) {
+        path = _noteAttachmentPath(note, attachment, index);
+        await client.storage.from('agenda-attachments').uploadBinary(
+              path,
+              base64Decode(attachment.bytesBase64),
+              fileOptions: FileOptions(
+                upsert: true,
+                contentType: attachment.mimeType,
+              ),
+            );
       }
-      await _replaceChildren(
-          'note_attachments', 'note_id', note.id, attachmentRows);
+      if (path == null) {
+        throw StateError('No se pudo subir el adjunto "${attachment.name}".');
+      }
+      if (!path.startsWith('$userId/')) {
+        throw StateError(
+          'El adjunto "${attachment.name}" no pertenece a esta cuenta.',
+        );
+      }
+      attachmentRows.add({
+        'id': '$userId-${note.id}-attachment-$index',
+        'user_id': userId,
+        'note_id': note.id,
+        'name': attachment.name,
+        'storage_path': path,
+        'size_bytes': attachment.sizeBytes,
+        'mime_type': attachment.mimeType,
+      });
+    }
+    await _replaceChildren(
+        'note_attachments', 'note_id', note.id, attachmentRows);
+    await _verifyNote(note);
+  }
+
+  String _noteAttachmentPath(
+    StudyNote note,
+    NoteAttachment attachment,
+    int index,
+  ) {
+    final safeName =
+        attachment.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    return '$userId/notes/${note.id}/$index-$safeName';
+  }
+
+  Future<void> _verifyNote(StudyNote note) async {
+    final row = await client
+        .from('study_notes')
+        .select(
+          'id, user_id, subject_id, title, topic, category, content, updated_at',
+        )
+        .eq('user_id', userId)
+        .eq('id', note.id)
+        .single();
+    if (row['user_id'] != userId ||
+        !_sameNoteContent(row, note) ||
+        row['title'] != note.title ||
+        row['topic'] != note.topic ||
+        _date(row['updated_at']) != note.updatedAt) {
+      throw StateError('No se pudo verificar el apunte "${note.title}".');
+    }
+
+    final checkRows = await client
+        .from('note_check_items')
+        .select('text, is_checked, position')
+        .eq('user_id', userId)
+        .eq('note_id', note.id)
+        .order('position');
+    if (checkRows.length != note.checklist.length) {
+      throw StateError('No se pudo verificar el checklist de "${note.title}".');
+    }
+    for (var index = 0; index < note.checklist.length; index++) {
+      final item = note.checklist[index];
+      final saved = checkRows[index];
+      if (saved['text'] != item.text ||
+          saved['is_checked'] != item.isChecked ||
+          saved['position'] != index) {
+        throw StateError(
+          'No se pudo verificar el checklist de "${note.title}".',
+        );
+      }
+    }
+
+    final tagRows = await client
+        .from('note_tags')
+        .select('tag')
+        .eq('user_id', userId)
+        .eq('note_id', note.id);
+    final savedTags = tagRows.map((row) => row['tag'] as String).toSet();
+    if (savedTags.length != note.tags.toSet().length ||
+        !savedTags.containsAll(note.tags)) {
+      throw StateError('No se pudieron verificar las etiquetas del apunte.');
+    }
+
+    final attachmentRows = await client
+        .from('note_attachments')
+        .select('id, name, storage_path, size_bytes, mime_type')
+        .eq('user_id', userId)
+        .eq('note_id', note.id)
+        .order('id');
+    if (attachmentRows.length != note.attachments.length) {
+      throw StateError('No se pudieron verificar los adjuntos del apunte.');
+    }
+    final attachmentsById = {
+      for (final row in attachmentRows) row['id'] as String: row,
+    };
+    for (var index = 0; index < note.attachments.length; index++) {
+      final attachment = note.attachments[index];
+      final saved = attachmentsById['$userId-${note.id}-attachment-$index'];
+      final expectedPath = attachment.bytesBase64.isNotEmpty
+          ? _noteAttachmentPath(note, attachment, index)
+          : attachment.storagePath;
+      if (saved == null ||
+          saved['name'] != attachment.name ||
+          saved['storage_path'] != expectedPath ||
+          (saved['size_bytes'] as num?)?.toInt() != attachment.sizeBytes ||
+          saved['mime_type'] != attachment.mimeType) {
+        throw StateError('No se pudieron verificar los adjuntos del apunte.');
+      }
+    }
+  }
+
+  Future<void> deleteNote(String noteId) async {
+    final rows = await client
+        .from('study_notes')
+        .delete()
+        .eq('user_id', userId)
+        .eq('id', noteId)
+        .select('id');
+    if (rows.isEmpty) {
+      throw StateError('Supabase no confirmó la eliminación del apunte.');
     }
   }
 

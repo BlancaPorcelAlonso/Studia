@@ -1009,8 +1009,8 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
                           .toList(),
                       onChanged: (status) {
                         if (status != null) {
-                          AgendaRepository.instance.updateAbsence(
-                              absence.copyWith(status: status));
+                          AgendaRepository.instance
+                              .updateAbsence(absence.copyWith(status: status));
                         }
                       },
                     ),
@@ -1435,7 +1435,8 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(18),
                               border: Border(
-                                left: BorderSide(color: subject.color, width: 5),
+                                left:
+                                    BorderSide(color: subject.color, width: 5),
                               ),
                             ),
                             padding: const EdgeInsets.all(16.0),
@@ -1474,8 +1475,22 @@ class _SubjectDetailScreenState extends State<SubjectDetailScreen> {
                                           Icons.delete_outline_rounded,
                                           size: 18),
                                       visualDensity: VisualDensity.compact,
-                                      onPressed: () => AgendaRepository.instance
-                                          .deleteNote(note.id),
+                                      onPressed: () async {
+                                        final repo = AgendaRepository.instance;
+                                        final deleted =
+                                            await repo.deleteNote(note.id);
+                                        if (!deleted && context.mounted) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                'No se pudo eliminar el apunte. '
+                                                '${repo.syncError ?? ''}',
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      },
                                     ),
                                   ],
                                 ),

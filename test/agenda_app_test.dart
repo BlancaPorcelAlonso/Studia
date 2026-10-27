@@ -104,13 +104,13 @@ void main() {
     final deliveryNameField = find.byWidgetPredicate(
       (widget) =>
           widget is TextField &&
-            widget.decoration?.hintText ==
+          widget.decoration?.hintText ==
               'Ej. Trabajo fin de trimestre / Práctica 3',
     );
     final deliveryNotesField = find.byWidgetPredicate(
       (widget) =>
           widget is TextField &&
-            widget.decoration?.hintText ==
+          widget.decoration?.hintText ==
               'Añade pautas de entrega, enlace al campus, etc.',
     );
     expect(deliveryNameField, findsOneWidget);
@@ -299,6 +299,35 @@ void main() {
     expect(restoredTask.linkedExamId, 'exam_1');
     expect(restoredTask.linkedDeliverableId, 'delivery_1');
     expect(restoredExam.linkedNoteIds, ['note_1', 'note_2']);
+  });
+
+  test('Study notes preserve content and attachments through JSON migration',
+      () {
+    final note = StudyNote(
+      id: 'legacy_note_1',
+      subjectId: 'prog',
+      title: 'Resumen',
+      topic: 'Tema 2',
+      category: 'Esquema',
+      content: 'Contenido del apunte',
+      updatedAt: DateTime(2026, 10, 20, 12),
+      tags: const ['Flutter', 'Repaso'],
+      checklist: const [
+        NoteCheckItem(text: 'Repasar conceptos', isChecked: true),
+      ],
+      attachments: const [
+        NoteAttachment(
+          name: 'resumen.pdf',
+          bytesBase64: 'cGRm',
+          sizeBytes: 3,
+          mimeType: 'application/pdf',
+        ),
+      ],
+    );
+
+    final restored = StudyNote.fromJson(note.toJson());
+
+    expect(restored.toJson(), note.toJson());
   });
 
   test('Repository CRUD and single source of truth operates correctly',

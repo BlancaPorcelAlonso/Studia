@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/models.dart';
@@ -43,18 +43,47 @@ class AgendaRepository extends ChangeNotifier {
       if (_initialized && _cloudUserId == user.id) return;
       _cloudSync = SupabaseAgendaSync(Supabase.instance.client, user.id);
       _initialized = false;
+      final prefs = await SharedPreferences.getInstance();
+      final storedNotes = prefs.getStringList('agenda_notes_v1');
+      final localNotes = storedNotes
+              ?.map((item) =>
+                  StudyNote.fromJson(jsonDecode(item) as Map<String, dynamic>))
+              .toList() ??
+          const <StudyNote>[];
+      final storedSubjects = prefs.getStringList('agenda_subjects_v1');
+      final localSubjects = storedSubjects
+              ?.map((item) =>
+                  Subject.fromJson(jsonDecode(item) as Map<String, dynamic>))
+              .toList() ??
+          const <Subject>[];
+      Object? migrationError;
+      try {
+        await _cloudSync!.migrateLocalNotes(localNotes, localSubjects);
+        if (!kDebugMode && storedNotes != null) {
+          await prefs.remove('agenda_notes_v1');
+        }
+      } catch (error) {
+        migrationError = error;
+      }
       final snapshot = await _cloudSync!.load();
       _subjects = snapshot.subjects;
       _tasks = snapshot.tasks;
       _exams = snapshot.exams;
-      _notes = snapshot.notes;
+      _notes = [
+        ...snapshot.notes,
+        ...localNotes.where(
+          (localNote) =>
+              !snapshot.notes.any((cloudNote) => cloudNote.id == localNote.id),
+        ),
+      ];
       _deliverables = snapshot.deliverables;
       _absences = snapshot.absences;
       _grades = snapshot.grades;
       _initialized = true;
       _cloudUserId = user.id;
-      _syncError = null;
-      await _cacheAll();
+      _syncError = migrationError == null
+          ? null
+          : 'No se pudieron migrar los apuntes locales. Se conservaron en este dispositivo. $migrationError';
       notifyListeners();
       return;
     }
@@ -255,7 +284,6 @@ class AgendaRepository extends ChangeNotifier {
     await _persistSubjects();
     await _persistTasks();
     await _persistExams();
-    await _persistNotes();
     await _persistDeliverables();
     await _persistAbsences();
     await _persistGrades();
@@ -323,8 +351,8 @@ class AgendaRepository extends ChangeNotifier {
   // --- Note Methods ---
 
   Future<bool> addNote(StudyNote note) async {
-    _notes.insert(0, note);
-    final synced = await _persistNotes();
+    final synced = await _saveNoteToCloud(note);
+    if (synced) _notes.insert(0, note);
     notifyListeners();
     return synced;
   }
@@ -332,19 +360,29 @@ class AgendaRepository extends ChangeNotifier {
   Future<bool> updateNote(StudyNote note) async {
     final index = _notes.indexWhere((n) => n.id == note.id);
     if (index != -1) {
-      _notes[index] = note;
-      final synced = await _persistNotes();
+      final previous = _notes[index];
+      final synced = await _saveNoteToCloud(
+        note,
+        expectedUpdatedAt: previous.updatedAt,
+      );
+      if (synced) _notes[index] = note;
       notifyListeners();
       return synced;
     }
     return false;
   }
 
-  Future<void> deleteNote(String noteId) async {
+  Future<bool> deleteNote(String noteId) async {
+    if (_cloudSync == null) {
+      _syncError = 'Inicia sesión para eliminar apuntes de forma segura.';
+      notifyListeners();
+      return false;
+    }
+    final deleted = await _syncRemote((cloud) => cloud.deleteNote(noteId));
+    if (!deleted) return false;
     _notes.removeWhere((n) => n.id == noteId);
-    await _persistNotes();
-    await _syncRemote((cloud) => cloud.delete('study_notes', noteId));
     notifyListeners();
+    return true;
   }
 
   // --- Deliverable Methods ---
@@ -472,11 +510,26 @@ class AgendaRepository extends ChangeNotifier {
 
   Future<bool> _persistNotes() async {
     final notes = List<StudyNote>.of(_notes);
-    final sync = _syncRemote((cloud) => cloud.saveNotes(notes));
-    final prefs = await SharedPreferences.getInstance();
-    final encoded = notes.map((n) => jsonEncode(n.toJson())).toList();
-    await prefs.setStringList('agenda_notes_v1', encoded);
-    return sync;
+    if (_cloudSync == null) return false;
+    return _syncRemote((cloud) => cloud.saveNotes(notes));
+  }
+
+  Future<bool> _saveNoteToCloud(
+    StudyNote note, {
+    DateTime? expectedUpdatedAt,
+  }) async {
+    if (_cloudSync == null) {
+      _syncError = 'Inicia sesión para guardar apuntes de forma segura.';
+      notifyListeners();
+      return false;
+    }
+    return _syncRemote(
+      (cloud) => cloud.saveNote(
+        note,
+        expectedUpdatedAt: expectedUpdatedAt,
+        insertOnly: expectedUpdatedAt == null,
+      ),
+    );
   }
 
   Future<bool> _persistDeliverables() async {
@@ -530,38 +583,6 @@ class AgendaRepository extends ChangeNotifier {
     } finally {
       completer.complete();
     }
-  }
-
-  Future<void> _cacheAll() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(
-      'agenda_subjects_v1',
-      _subjects.map((item) => jsonEncode(item.toJson())).toList(),
-    );
-    await prefs.setStringList(
-      'agenda_tasks_v1',
-      _tasks.map((item) => jsonEncode(item.toJson())).toList(),
-    );
-    await prefs.setStringList(
-      'agenda_exams_v1',
-      _exams.map((item) => jsonEncode(item.toJson())).toList(),
-    );
-    await prefs.setStringList(
-      'agenda_notes_v1',
-      _notes.map((item) => jsonEncode(item.toJson())).toList(),
-    );
-    await prefs.setStringList(
-      'agenda_deliverables_v1',
-      _deliverables.map((item) => jsonEncode(item.toJson())).toList(),
-    );
-    await prefs.setStringList(
-      'agenda_absences_v1',
-      _absences.map((item) => jsonEncode(item.toJson())).toList(),
-    );
-    await prefs.setStringList(
-      'agenda_grades_v1',
-      _grades.map((item) => jsonEncode(item.toJson())).toList(),
-    );
   }
 
   // --- Seed Data ---

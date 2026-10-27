@@ -152,7 +152,20 @@ class _NoteFormModalState extends State<NoteFormModal> {
       final synced =
           isEditing ? await repo.updateNote(note) : await repo.addNote(note);
       if (!mounted) return;
-      if (!synced) return;
+      if (!synced) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'No se pudo guardar en Supabase. '
+              '${repo.syncError ?? 'El contenido sigue disponible en el formulario.'}',
+            ),
+          ),
+        );
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Apunte guardado en Supabase.')),
+      );
       Navigator.of(context).pop();
     } catch (error) {
       if (!mounted) return;
@@ -180,10 +193,27 @@ class _NoteFormModalState extends State<NoteFormModal> {
             style: FilledButton.styleFrom(
               backgroundColor: CottagecoreColors.urgentRed,
             ),
-            onPressed: () {
+            onPressed: _isSaving
+                ? null
+                : () async {
               Navigator.pop(ctx);
-              AgendaRepository.instance.deleteNote(widget.initialNote!.id);
-              Navigator.of(context).pop();
+              setState(() => _isSaving = true);
+              final repo = AgendaRepository.instance;
+              final deleted = await repo.deleteNote(widget.initialNote!.id);
+              if (!mounted) return;
+              if (deleted) {
+                Navigator.of(context).pop();
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'No se pudo eliminar el apunte. '
+                      '${repo.syncError ?? ''}',
+                    ),
+                  ),
+                );
+              }
+              setState(() => _isSaving = false);
             },
             child: const Text('Eliminar'),
           ),
