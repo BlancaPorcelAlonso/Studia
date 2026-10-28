@@ -759,37 +759,40 @@ class SupabaseAgendaSync {
       'content': note.content,
       'updated_at': note.updatedAt.toIso8601String(),
     };
-    final Map<String, dynamic>? saved;
+    late final List<Map<String, dynamic>> savedRows;
     if (expectedUpdatedAt != null) {
-      saved = await client
+      savedRows = List<Map<String, dynamic>>.from(await client
           .from('study_notes')
           .update(values)
           .eq('user_id', userId)
           .eq('id', note.id)
           .eq('updated_at', expectedUpdatedAt.toIso8601String())
-          .select('id, user_id, subject_id, title, topic, category, content')
-          .maybeSingle();
-      if (saved == null) {
+          .select('id, user_id, subject_id, title, topic, category, content'));
+      if (savedRows.isEmpty) {
         throw StateError(
           'El apunte "${note.title}" cambió en otro dispositivo. '
           'Vuelve a cargarlo antes de guardar para no sobrescribir cambios.',
         );
       }
     } else if (insertOnly) {
-      saved = await client
+      savedRows = List<Map<String, dynamic>>.from(await client
           .from('study_notes')
-          .insert({'id': note.id, ...values})
-          .select('id, user_id, subject_id, title, topic, category, content')
-          .maybeSingle();
+          .insert({'id': note.id, ...values}).select(
+              'id, user_id, subject_id, title, topic, category, content'));
     } else {
-      saved = await client
+      savedRows = List<Map<String, dynamic>>.from(await client
           .from('study_notes')
-          .upsert({'id': note.id, ...values})
-          .select('id, user_id, subject_id, title, topic, category, content')
-          .maybeSingle();
+          .upsert({'id': note.id, ...values}).select(
+              'id, user_id, subject_id, title, topic, category, content'));
     }
-    if (saved == null ||
-        saved['id'] != note.id ||
+    if (savedRows.length != 1) {
+      throw StateError(
+        'Supabase devolvió ${savedRows.length} filas al guardar '
+        'el apunte "${note.title}" (se esperaba una).',
+      );
+    }
+    final saved = savedRows.single;
+    if (saved['id'] != note.id ||
         saved['user_id'] != userId ||
         saved['subject_id'] != note.subjectId ||
         saved['title'] != note.title ||
@@ -868,17 +871,23 @@ class SupabaseAgendaSync {
   }
 
   Future<void> _verifyNote(StudyNote note) async {
-    final row = await client
+    final rows = await client
         .from('study_notes')
         .select(
           'id, user_id, subject_id, title, topic, category, content, updated_at',
         )
         .eq('user_id', userId)
-        .eq('id', note.id)
-        .maybeSingle();
-    if (row == null) {
+        .eq('id', note.id);
+    if (rows.isEmpty) {
       throw StateError('No se encontró el apunte "${note.title}" en Supabase.');
     }
+    if (rows.length != 1) {
+      throw StateError(
+        'Supabase devolvió ${rows.length} filas al verificar '
+        'el apunte "${note.title}" (se esperaba una).',
+      );
+    }
+    final row = rows.single;
     if (row['user_id'] != userId ||
         !_sameNoteContent(row, note) ||
         row['title'] != note.title ||

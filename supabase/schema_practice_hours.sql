@@ -86,3 +86,5 @@ grant execute on function public.get_or_create_practice_hours(bigint)
   to authenticated;
 grant execute on function public.add_practice_minutes(bigint)
   to authenticated;
+
+notify pgrst, 'reload schema';
