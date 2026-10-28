@@ -330,7 +330,7 @@ class _DeliverableFormModalState extends State<DeliverableFormModal> {
                   ),
                   Switch(
                     value: _isSubmitted,
-                    activeColor: CottagecoreColors.forest,
+                    activeThumbColor: CottagecoreColors.forest,
                     onChanged: (val) {
                       setState(() => _isSubmitted = val);
                     },

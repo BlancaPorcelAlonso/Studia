@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:agenda/main.dart';
+import 'package:agenda/screens/progress_screen.dart';
 import 'package:agenda/services/agenda_repository.dart';
 import 'package:agenda/models/models.dart';
 import 'package:agenda/widgets/desktop_sidebar.dart';
@@ -224,6 +225,63 @@ void main() {
     expect(find.text('🍂 Próximamente'), findsOneWidget);
     expect(find.text('📌 Próximos exámenes y eventos'), findsOneWidget);
     expect(find.text('Inicio'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Practice hours add hours and minutes to the persisted total',
+      (tester) async {
+    final repo = AgendaRepository.instance;
+    final initialMinutes = repo.practiceMinutes;
+
+    await tester.pumpWidget(
+      const MaterialApp(home: ProgressScreen()),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('practice-add-button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('practice-hours-input')),
+      '4',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('practice-minutes-input')),
+      '20',
+    );
+    await tester.tap(find.text('Guardar horas'));
+    await tester.pumpAndSettle();
+
+    final updatedMinutes = initialMinutes + 4 * 60 + 20;
+    expect(repo.practiceMinutes, updatedMinutes);
+    expect(
+      find.text(
+        '${updatedMinutes ~/ 60} h ${updatedMinutes % 60} min',
+      ),
+      findsOneWidget,
+    );
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getInt('agenda_practice_minutes_v1'), updatedMinutes);
+  });
+
+  testWidgets('Practice form opens as a bottom sheet on mobile',
+      (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    await tester.pumpWidget(
+      const MaterialApp(home: ProgressScreen()),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byKey(const ValueKey('practice-add-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('🌱 Añadir horas de prácticas'), findsOneWidget);
+    expect(find.byKey(const ValueKey('practice-hours-input')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

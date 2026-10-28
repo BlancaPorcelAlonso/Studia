@@ -878,6 +878,29 @@ class SupabaseAgendaSync {
     }
   }
 
+  Future<int> loadPracticeMinutes(int initialMinutes) async {
+    final result = await client.rpc(
+      'get_or_create_practice_hours',
+      params: {'p_initial_minutes': initialMinutes},
+    );
+    if (result is! num) {
+      throw FormatException('Respuesta inválida al cargar horas de prácticas.');
+    }
+    return result.toInt();
+  }
+
+  Future<int> addPracticeMinutes(int minutes) async {
+    final result = await client.rpc(
+      'add_practice_minutes',
+      params: {'p_minutes': minutes},
+    );
+    if (result is! num) {
+      throw FormatException(
+          'Respuesta inválida al guardar horas de prácticas.');
+    }
+    return result.toInt();
+  }
+
   Future<void> delete(String table, String id) async {
     await client.from(table).delete().eq('user_id', userId).eq('id', id);
   }

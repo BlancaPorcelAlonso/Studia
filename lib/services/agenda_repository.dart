@@ -19,6 +19,7 @@ class AgendaRepository extends ChangeNotifier {
   List<Deliverable> _deliverables = [];
   List<SubjectAbsence> _absences = [];
   List<SubjectGrade> _grades = [];
+  int _practiceMinutes = 0;
   bool _initialized = false;
   SupabaseAgendaSync? _cloudSync;
   String? _cloudUserId;
@@ -32,6 +33,7 @@ class AgendaRepository extends ChangeNotifier {
   List<Deliverable> get deliverables => List.unmodifiable(_deliverables);
   List<SubjectAbsence> get absences => List.unmodifiable(_absences);
   List<SubjectGrade> get grades => List.unmodifiable(_grades);
+  int get practiceMinutes => _practiceMinutes;
   bool get isInitialized => _initialized;
   bool get isCloudConnected => _cloudSync != null;
   String? get syncError => _syncError;
@@ -44,6 +46,16 @@ class AgendaRepository extends ChangeNotifier {
       _cloudSync = SupabaseAgendaSync(Supabase.instance.client, user.id);
       _initialized = false;
       final prefs = await SharedPreferences.getInstance();
+      final practiceMinutesKey = 'agenda_practice_minutes_${user.id}_v1';
+      final initialPracticeMinutes = prefs.getInt(practiceMinutesKey) ??
+          prefs.getInt('agenda_practice_minutes_v1') ??
+          0;
+      _practiceMinutes =
+          await _cloudSync!.loadPracticeMinutes(initialPracticeMinutes);
+      await prefs.setInt(practiceMinutesKey, _practiceMinutes);
+      if (prefs.containsKey('agenda_practice_minutes_v1')) {
+        await prefs.remove('agenda_practice_minutes_v1');
+      }
       final storedNotes = prefs.getStringList('agenda_notes_v1');
       final localNotes = storedNotes
               ?.map((item) =>
@@ -91,6 +103,7 @@ class AgendaRepository extends ChangeNotifier {
     _cloudSync = null;
     _cloudUserId = null;
     final prefs = await SharedPreferences.getInstance();
+    _practiceMinutes = prefs.getInt('agenda_practice_minutes_v1') ?? 0;
 
     final storedSubjects = prefs.getStringList('agenda_subjects_v1');
     if (storedSubjects != null && storedSubjects.isNotEmpty) {
@@ -158,10 +171,34 @@ class AgendaRepository extends ChangeNotifier {
     _deliverables = [];
     _absences = [];
     _grades = [];
+    _practiceMinutes = 0;
     _cloudSync = null;
     _cloudUserId = null;
     _initialized = false;
     _syncError = null;
+    notifyListeners();
+  }
+
+  Future<void> addPracticeMinutes(int minutes) async {
+    if (minutes <= 0) {
+      throw ArgumentError.value(minutes, 'minutes', 'Debe ser mayor que cero.');
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final cloud = _cloudSync;
+    late final int totalMinutes;
+    if (cloud == null) {
+      totalMinutes = _practiceMinutes + minutes;
+      await prefs.setInt('agenda_practice_minutes_v1', totalMinutes);
+    } else {
+      final userId = _cloudUserId;
+      if (userId == null) {
+        throw StateError('No se pudo identificar la cuenta de Supabase.');
+      }
+      totalMinutes = await cloud.addPracticeMinutes(minutes);
+      await prefs.setInt('agenda_practice_minutes_${userId}_v1', totalMinutes);
+    }
+    _practiceMinutes = totalMinutes;
     notifyListeners();
   }
 
