@@ -725,7 +725,10 @@ class SupabaseAgendaSync {
         )
         .eq('user_id', userId)
         .eq('id', note.id)
-        .single();
+        .maybeSingle();
+    if (row == null) {
+      throw StateError('No se encontró el apunte "${note.title}" en Supabase.');
+    }
     if (row['user_id'] != userId ||
         !_sameNoteContent(row, note) ||
         row['title'] != note.title ||
