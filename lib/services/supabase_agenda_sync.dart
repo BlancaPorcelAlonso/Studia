@@ -73,16 +73,6 @@ class SupabaseAgendaSync {
     debugPrintStack(stackTrace: stackTrace);
   }
 
-  void _logLoadWarning(
-    String operation,
-    Object error,
-    StackTrace stackTrace,
-  ) {
-    if (!kDebugMode) return;
-    debugPrint('[SupabaseAgendaSync] Non-fatal failure in $operation: $error');
-    debugPrintStack(stackTrace: stackTrace);
-  }
-
   Future<AgendaSnapshot> load() async {
     final subjectRows = await _rows('subjects');
     final scheduleRows = await _rows('class_schedules');
@@ -131,12 +121,7 @@ class SupabaseAgendaSync {
     final taskRows = await _rows('tasks');
     final taskLinks = await _rows('task_links');
     final taskAttachments = await _rows('task_attachments');
-    List<Map<String, dynamic>> taskCheckRows = const [];
-    try {
-      taskCheckRows = await _rows('task_check_items');
-    } catch (error, stackTrace) {
-      _logLoadWarning('SELECT public.task_check_items', error, stackTrace);
-    }
+    final taskCheckRows = await _rows('task_check_items');
     final checksByTask = <String, List<Map<String, dynamic>>>{};
     for (final row in taskCheckRows) {
       try {
@@ -337,16 +322,7 @@ class SupabaseAgendaSync {
       ),
     );
 
-    List<Map<String, dynamic>> deliverableAttachmentRows = const [];
-    try {
-      deliverableAttachmentRows = await _rows('deliverable_attachments');
-    } catch (error, stackTrace) {
-      _logLoadWarning(
-        'SELECT public.deliverable_attachments',
-        error,
-        stackTrace,
-      );
-    }
+    final deliverableAttachmentRows = await _rows('deliverable_attachments');
     final deliverableAttachments = <String, List<Map<String, dynamic>>>{};
     for (final row in deliverableAttachmentRows) {
       try {
