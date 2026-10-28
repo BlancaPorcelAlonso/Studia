@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/models.dart';
 
@@ -29,38 +30,103 @@ class SupabaseAgendaSync {
   final String userId;
 
   Future<List<Map<String, dynamic>>> _rows(String table) async {
-    final result = await client.from(table).select().eq('user_id', userId);
-    return List<Map<String, dynamic>>.from(result);
+    final dynamic result;
+    try {
+      result = await client.from(table).select().eq('user_id', userId);
+    } catch (error, stackTrace) {
+      _logLoadFailure('SELECT public.$table', error, stackTrace);
+      rethrow;
+    }
+    try {
+      return List<Map<String, dynamic>>.from(result);
+    } catch (error, stackTrace) {
+      _logLoadFailure(
+          'decode SELECT public.$table response', error, stackTrace);
+      rethrow;
+    }
+  }
+
+  List<T> _convertRows<T>(
+    String table,
+    List<Map<String, dynamic>> rows,
+    T Function(Map<String, dynamic>) convert,
+  ) {
+    final converted = <T>[];
+    for (var index = 0; index < rows.length; index++) {
+      try {
+        converted.add(convert(rows[index]));
+      } catch (error, stackTrace) {
+        _logLoadFailure('convert public.$table row $index', error, stackTrace);
+        rethrow;
+      }
+    }
+    return converted;
+  }
+
+  void _logLoadFailure(
+    String operation,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    if (!kDebugMode) return;
+    debugPrint('[SupabaseAgendaSync] Failed to $operation: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
+
+  void _logLoadWarning(
+    String operation,
+    Object error,
+    StackTrace stackTrace,
+  ) {
+    if (!kDebugMode) return;
+    debugPrint('[SupabaseAgendaSync] Non-fatal failure in $operation: $error');
+    debugPrintStack(stackTrace: stackTrace);
   }
 
   Future<AgendaSnapshot> load() async {
     final subjectRows = await _rows('subjects');
     final scheduleRows = await _rows('class_schedules');
     final schedules = <String, List<ClassSchedule>>{};
-    for (final row in scheduleRows) {
-      schedules.putIfAbsent(row['subject_id'] as String, () => []).add(
-            ClassSchedule(
-              weekday: row['weekday'] as int,
-              startMinutes: row['start_minutes'] as int,
-              durationMinutes: row['duration_minutes'] as int,
-            ),
-          );
+    final parsedSchedules = _convertRows<ClassSchedule>(
+      'class_schedules',
+      scheduleRows,
+      (row) => ClassSchedule(
+        weekday: (row['weekday'] as num).toInt(),
+        startMinutes: (row['start_minutes'] as num).toInt(),
+        durationMinutes: (row['duration_minutes'] as num).toInt(),
+      ),
+    );
+    for (var index = 0; index < scheduleRows.length; index++) {
+      try {
+        schedules
+            .putIfAbsent(scheduleRows[index]['subject_id'] as String, () => [])
+            .add(parsedSchedules[index]);
+      } catch (error, stackTrace) {
+        _logLoadFailure(
+          'group public.class_schedules by subject',
+          error,
+          stackTrace,
+        );
+        rethrow;
+      }
     }
-    final subjects = subjectRows
-        .map((row) => Subject(
-              id: row['id'] as String,
-              name: row['name'] as String,
-              emoji: row['emoji'] as String? ?? '🌿',
-              colorValue: (row['color_value'] as num?)?.toInt() ?? 0xFF7EA98B,
-              teacher: row['teacher'] as String?,
-              classroom: row['classroom'] as String?,
-              schedule: row['schedule'] as String?,
-              schedules: schedules[row['id']] ?? const [],
-              notes: row['notes'] as String?,
-              lastStudyNote: row['last_study_note'] as String?,
-              lastStudyAt: _optionalDate(row['last_study_at']),
-            ))
-        .toList();
+    final subjects = _convertRows(
+      'subjects',
+      subjectRows,
+      (row) => Subject(
+        id: row['id'] as String,
+        name: row['name'] as String,
+        emoji: row['emoji'] as String? ?? '🌿',
+        colorValue: (row['color_value'] as num?)?.toInt() ?? 0xFF7EA98B,
+        teacher: row['teacher'] as String?,
+        classroom: row['classroom'] as String?,
+        schedule: row['schedule'] as String?,
+        schedules: schedules[row['id']] ?? const [],
+        notes: row['notes'] as String?,
+        lastStudyNote: row['last_study_note'] as String?,
+        lastStudyAt: _optionalDate(row['last_study_at']),
+      ),
+    );
 
     final taskRows = await _rows('tasks');
     final taskLinks = await _rows('task_links');
@@ -68,80 +134,129 @@ class SupabaseAgendaSync {
     List<Map<String, dynamic>> taskCheckRows = const [];
     try {
       taskCheckRows = await _rows('task_check_items');
-    } catch (_) {}
+    } catch (error, stackTrace) {
+      _logLoadWarning('SELECT public.task_check_items', error, stackTrace);
+    }
     final checksByTask = <String, List<Map<String, dynamic>>>{};
     for (final row in taskCheckRows) {
-      checksByTask.putIfAbsent(row['task_id'] as String, () => []).add(row);
+      try {
+        checksByTask.putIfAbsent(row['task_id'] as String, () => []).add(row);
+      } catch (error, stackTrace) {
+        _logLoadFailure(
+          'group public.task_check_items by task',
+          error,
+          stackTrace,
+        );
+        rethrow;
+      }
     }
-    for (final list in checksByTask.values) {
-      list.sort(
-          (a, b) => (a['position'] as int).compareTo(b['position'] as int));
+    try {
+      for (final list in checksByTask.values) {
+        list.sort(
+            (a, b) => (a['position'] as num).compareTo(b['position'] as num));
+      }
+    } catch (error, stackTrace) {
+      _logLoadFailure(
+        'sort public.task_check_items by position',
+        error,
+        stackTrace,
+      );
+      rethrow;
     }
-    final linksByTask = _group(taskLinks, 'task_id', 'url');
-    final filesByTask = _group(taskAttachments, 'task_id', 'storage_path');
-    final tasks = taskRows
-        .map((row) => Task(
-              id: row['id'] as String,
-              title: row['title'] as String,
-              subjectId: row['subject_id'] as String,
-              status:
-                  _enumValue(TaskStatus.values, row['status'], TaskStatus.todo),
-              priority: _enumValue(
-                  TaskPriority.values, row['priority'], TaskPriority.medium),
-              type:
-                  _enumValue(TaskType.values, row['type'], TaskType.assignment),
-              dueDate: _date(row['due_date']),
-              startDate: _optionalDate(row['start_date']),
-              completedAt: _optionalDate(row['completed_at']),
-              description: row['description'] as String?,
-              notes: row['notes'] as String?,
-              links: linksByTask[row['id']] ?? const [],
-              files: filesByTask[row['id']] ?? const [],
-              checklist: (checksByTask[row['id']] ?? const [])
-                  .map((c) => TaskCheckItem(
-                        id: c['id'] as String,
-                        text: c['text'] as String,
-                        isChecked: c['is_checked'] as bool? ?? false,
-                      ))
-                  .toList(),
-              linkedExamId: row['linked_exam_id'] as String?,
-              linkedDeliverableId: row['linked_deliverable_id'] as String?,
-            ))
-        .toList();
+    final linksByTask = _group(
+      taskLinks,
+      table: 'task_links',
+      parentKey: 'task_id',
+      valueKey: 'url',
+    );
+    final filesByTask = _group(
+      taskAttachments,
+      table: 'task_attachments',
+      parentKey: 'task_id',
+      valueKey: 'storage_path',
+    );
+    final tasks = _convertRows(
+      'tasks',
+      taskRows,
+      (row) => Task(
+        id: row['id'] as String,
+        title: row['title'] as String,
+        subjectId: row['subject_id'] as String,
+        status: _enumValue(TaskStatus.values, row['status'], TaskStatus.todo),
+        priority: _enumValue(
+            TaskPriority.values, row['priority'], TaskPriority.medium),
+        type: _enumValue(TaskType.values, row['type'], TaskType.assignment),
+        dueDate: _date(row['due_date']),
+        startDate: _optionalDate(row['start_date']),
+        completedAt: _optionalDate(row['completed_at']),
+        description: row['description'] as String?,
+        notes: row['notes'] as String?,
+        links: linksByTask[row['id']] ?? const [],
+        files: filesByTask[row['id']] ?? const [],
+        checklist: (checksByTask[row['id']] ?? const [])
+            .map((c) => TaskCheckItem(
+                  id: c['id'] as String,
+                  text: c['text'] as String,
+                  isChecked: c['is_checked'] as bool? ?? false,
+                ))
+            .toList(),
+        linkedExamId: row['linked_exam_id'] as String?,
+        linkedDeliverableId: row['linked_deliverable_id'] as String?,
+      ),
+    );
 
     final examRows = await _rows('exams');
     final topicRows = await _rows('exam_topics');
     final topics = <String, List<Map<String, dynamic>>>{};
     for (final row in topicRows) {
-      topics.putIfAbsent(row['exam_id'] as String, () => []).add(row);
+      try {
+        topics.putIfAbsent(row['exam_id'] as String, () => []).add(row);
+      } catch (error, stackTrace) {
+        _logLoadFailure(
+          'group public.exam_topics by exam',
+          error,
+          stackTrace,
+        );
+        rethrow;
+      }
     }
-    for (final list in topics.values) {
-      list.sort(
-          (a, b) => (a['position'] as int).compareTo(b['position'] as int));
+    try {
+      for (final list in topics.values) {
+        list.sort(
+            (a, b) => (a['position'] as num).compareTo(b['position'] as num));
+      }
+    } catch (error, stackTrace) {
+      _logLoadFailure(
+        'sort public.exam_topics by position',
+        error,
+        stackTrace,
+      );
+      rethrow;
     }
-    final exams = examRows
-        .map((row) => Exam(
-              id: row['id'] as String,
-              name: row['name'] as String,
-              subjectId: row['subject_id'] as String,
-              date: _date(row['exam_date']),
-              time: row['exam_time'] as String,
-              classroom: row['classroom'] as String,
-              state: _enumValue(
-                  ExamState.values, row['state'], ExamState.notStarted),
-              notes: row['notes'] as String?,
-              topics: (topics[row['id']] ?? const [])
-                  .map((topic) => ExamTopic(
-                        title: topic['title'] as String,
-                        isCompleted: topic['is_completed'] as bool,
-                      ))
-                  .toList(),
-              linkedNoteIds: (row['linked_note_ids'] as List<dynamic>?)
-                      ?.map((e) => e as String)
-                      .toList() ??
-                  const [],
-            ))
-        .toList();
+    final exams = _convertRows(
+      'exams',
+      examRows,
+      (row) => Exam(
+        id: row['id'] as String,
+        name: row['name'] as String,
+        subjectId: row['subject_id'] as String,
+        date: _date(row['exam_date']),
+        time: row['exam_time'] as String,
+        classroom: row['classroom'] as String,
+        state: _enumValue(ExamState.values, row['state'], ExamState.notStarted),
+        notes: row['notes'] as String?,
+        topics: (topics[row['id']] ?? const [])
+            .map((topic) => ExamTopic(
+                  title: topic['title'] as String,
+                  isCompleted: topic['is_completed'] as bool,
+                ))
+            .toList(),
+        linkedNoteIds: (row['linked_note_ids'] as List<dynamic>?)
+                ?.map((e) => e as String)
+                .toList() ??
+            const [],
+      ),
+    );
 
     final noteRows = await _rows('study_notes');
     final checkRows = await _rows('note_check_items');
@@ -149,99 +264,158 @@ class SupabaseAgendaSync {
     final attachmentRows = await _rows('note_attachments');
     final checks = <String, List<Map<String, dynamic>>>{};
     for (final row in checkRows) {
-      checks.putIfAbsent(row['note_id'] as String, () => []).add(row);
+      try {
+        checks.putIfAbsent(row['note_id'] as String, () => []).add(row);
+      } catch (error, stackTrace) {
+        _logLoadFailure(
+          'group public.note_check_items by note',
+          error,
+          stackTrace,
+        );
+        rethrow;
+      }
     }
-    for (final list in checks.values) {
-      list.sort(
-          (a, b) => (a['position'] as int).compareTo(b['position'] as int));
+    try {
+      for (final list in checks.values) {
+        list.sort(
+            (a, b) => (a['position'] as num).compareTo(b['position'] as num));
+      }
+    } catch (error, stackTrace) {
+      _logLoadFailure(
+        'sort public.note_check_items by position',
+        error,
+        stackTrace,
+      );
+      rethrow;
     }
-    final tags = _group(tagRows, 'note_id', 'tag');
+    final tags = _group(
+      tagRows,
+      table: 'note_tags',
+      parentKey: 'note_id',
+      valueKey: 'tag',
+    );
     final attachments = <String, List<NoteAttachment>>{};
     for (final row in attachmentRows) {
-      attachments.putIfAbsent(row['note_id'] as String, () => []).add(
-            NoteAttachment(
-              name: row['name'] as String,
-              bytesBase64: '',
-              sizeBytes: (row['size_bytes'] as num?)?.toInt() ?? 0,
-              mimeType: row['mime_type'] as String?,
-              storagePath: row['storage_path'] as String,
-            ),
-          );
+      try {
+        attachments.putIfAbsent(row['note_id'] as String, () => []).add(
+              NoteAttachment(
+                name: row['name'] as String,
+                bytesBase64: '',
+                sizeBytes: (row['size_bytes'] as num?)?.toInt() ?? 0,
+                mimeType: row['mime_type'] as String?,
+                storagePath: row['storage_path'] as String,
+              ),
+            );
+      } catch (error, stackTrace) {
+        _logLoadFailure(
+          'convert/group public.note_attachments',
+          error,
+          stackTrace,
+        );
+        rethrow;
+      }
     }
-    final notes = noteRows
-        .map((row) => StudyNote(
-              id: row['id'] as String,
-              subjectId: row['subject_id'] as String,
-              title: row['title'] as String,
-              topic: row['topic'] as String,
-              category: row['category'] as String,
-              content: row['content'] as String,
-              updatedAt: _date(row['updated_at']),
-              tags: tags[row['id']] ?? const [],
-              checklist: (checks[row['id']] ?? const [])
-                  .map((item) => NoteCheckItem(
-                        text: item['text'] as String,
-                        isChecked: item['is_checked'] as bool,
-                      ))
-                  .toList(),
-              attachments: attachments[row['id']] ?? const [],
-            ))
-        .toList();
+    final notes = _convertRows(
+      'study_notes',
+      noteRows,
+      (row) => StudyNote(
+        id: row['id'] as String,
+        subjectId: row['subject_id'] as String,
+        title: row['title'] as String,
+        topic: row['topic'] as String,
+        category: row['category'] as String,
+        content: row['content'] as String,
+        updatedAt: _date(row['updated_at']),
+        tags: tags[row['id']] ?? const [],
+        checklist: (checks[row['id']] ?? const [])
+            .map((item) => NoteCheckItem(
+                  text: item['text'] as String,
+                  isChecked: item['is_checked'] as bool,
+                ))
+            .toList(),
+        attachments: attachments[row['id']] ?? const [],
+      ),
+    );
 
     List<Map<String, dynamic>> deliverableAttachmentRows = const [];
     try {
       deliverableAttachmentRows = await _rows('deliverable_attachments');
-    } catch (_) {}
+    } catch (error, stackTrace) {
+      _logLoadWarning(
+        'SELECT public.deliverable_attachments',
+        error,
+        stackTrace,
+      );
+    }
     final deliverableAttachments = <String, List<Map<String, dynamic>>>{};
     for (final row in deliverableAttachmentRows) {
-      deliverableAttachments
-          .putIfAbsent(row['deliverable_id'] as String, () => [])
-          .add(row);
+      try {
+        deliverableAttachments
+            .putIfAbsent(row['deliverable_id'] as String, () => [])
+            .add(row);
+      } catch (error, stackTrace) {
+        _logLoadFailure(
+          'group public.deliverable_attachments by deliverable',
+          error,
+          stackTrace,
+        );
+        rethrow;
+      }
     }
 
-    final deliverables = (await _rows('deliverables'))
-        .map((row) => Deliverable(
-              id: row['id'] as String,
-              subjectId: row['subject_id'] as String,
-              title: row['title'] as String,
-              date: _date(row['due_date']),
-              description: row['description'] as String?,
-              isSubmitted: row['is_submitted'] as bool,
-              attachments: (deliverableAttachments[row['id'] as String] ??
-                      const <Map<String, dynamic>>[])
-                  .map((attachment) => NoteAttachment(
-                        name: attachment['name'] as String,
-                        bytesBase64: '',
-                        sizeBytes:
-                            (attachment['size_bytes'] as num?)?.toInt() ?? 0,
-                        mimeType: attachment['mime_type'] as String?,
-                        storagePath: attachment['storage_path'] as String,
-                      ))
-                  .toList(),
-            ))
-        .toList();
-    final absences = (await _rows('subject_absences'))
-        .map((row) => SubjectAbsence(
-              id: row['id'] as String,
-              subjectId: row['subject_id'] as String,
-              date: _date(row['absence_date']),
-              status: _enumValue(
-                  AbsenceStatus.values, row['status'], AbsenceStatus.pending),
-              note: row['note'] as String?,
-            ))
-        .toList();
-    final grades = (await _rows('subject_grades'))
-        .map((row) => SubjectGrade(
-              id: row['id'] as String,
-              subjectId: row['subject_id'] as String,
-              title: row['title'] as String,
-              type:
-                  _enumValue(GradeType.values, row['type'], GradeType.activity),
-              score: (row['score'] as num).toDouble(),
-              maxScore: (row['max_score'] as num).toDouble(),
-              date: _date(row['grade_date']),
-            ))
-        .toList();
+    final deliverablesRows = await _rows('deliverables');
+    final deliverables = _convertRows(
+      'deliverables',
+      deliverablesRows,
+      (row) => Deliverable(
+        id: row['id'] as String,
+        subjectId: row['subject_id'] as String,
+        title: row['title'] as String,
+        date: _date(row['due_date']),
+        description: row['description'] as String?,
+        isSubmitted: row['is_submitted'] as bool,
+        attachments: (deliverableAttachments[row['id'] as String] ??
+                const <Map<String, dynamic>>[])
+            .map((attachment) => NoteAttachment(
+                  name: attachment['name'] as String,
+                  bytesBase64: '',
+                  sizeBytes: (attachment['size_bytes'] as num?)?.toInt() ?? 0,
+                  mimeType: attachment['mime_type'] as String?,
+                  storagePath: attachment['storage_path'] as String,
+                ))
+            .toList(),
+      ),
+    );
+    final absencesRows = await _rows('subject_absences');
+    final absences = _convertRows(
+      'subject_absences',
+      absencesRows,
+      (row) => SubjectAbsence(
+        id: row['id'] as String,
+        subjectId: row['subject_id'] as String,
+        date: _date(row['absence_date']),
+        status: _enumValue(
+          AbsenceStatus.values,
+          row['status'],
+          AbsenceStatus.pending,
+        ),
+        note: row['note'] as String?,
+      ),
+    );
+    final gradesRows = await _rows('subject_grades');
+    final grades = _convertRows(
+      'subject_grades',
+      gradesRows,
+      (row) => SubjectGrade(
+        id: row['id'] as String,
+        subjectId: row['subject_id'] as String,
+        title: row['title'] as String,
+        type: _enumValue(GradeType.values, row['type'], GradeType.activity),
+        score: (row['score'] as num).toDouble(),
+        maxScore: (row['max_score'] as num).toDouble(),
+        date: _date(row['grade_date']),
+      ),
+    );
 
     return AgendaSnapshot(
       subjects: subjects,
@@ -882,26 +1056,47 @@ class SupabaseAgendaSync {
   }
 
   Future<int> loadPracticeMinutes(int initialMinutes) async {
-    final result = await client.rpc(
-      'get_or_create_practice_hours',
-      params: {'p_initial_minutes': initialMinutes},
-    );
-    if (result is! num) {
-      throw FormatException('Respuesta inválida al cargar horas de prácticas.');
+    try {
+      final result = await client.rpc(
+        'get_or_create_practice_hours',
+        params: {'p_initial_minutes': initialMinutes},
+      );
+      if (result is! num) {
+        throw FormatException(
+          'Respuesta inválida al cargar horas de prácticas: $result',
+        );
+      }
+      return result.toInt();
+    } catch (error, stackTrace) {
+      _logLoadFailure(
+        'RPC public.get_or_create_practice_hours',
+        error,
+        stackTrace,
+      );
+      rethrow;
     }
-    return result.toInt();
   }
 
   Future<int> addPracticeMinutes(int minutes) async {
-    final result = await client.rpc(
-      'add_practice_minutes',
-      params: {'p_minutes': minutes},
-    );
-    if (result is! num) {
-      throw FormatException(
-          'Respuesta inválida al guardar horas de prácticas.');
+    try {
+      final result = await client.rpc(
+        'add_practice_minutes',
+        params: {'p_minutes': minutes},
+      );
+      if (result is! num) {
+        throw FormatException(
+          'Respuesta inválida al guardar horas de prácticas: $result',
+        );
+      }
+      return result.toInt();
+    } catch (error, stackTrace) {
+      _logLoadFailure(
+        'RPC public.add_practice_minutes',
+        error,
+        stackTrace,
+      );
+      rethrow;
     }
-    return result.toInt();
   }
 
   Future<void> delete(String table, String id) async {
@@ -966,15 +1161,21 @@ class SupabaseAgendaSync {
   }
 
   Map<String, List<String>> _group(
-    List<Map<String, dynamic>> rows,
-    String parentKey,
-    String valueKey,
-  ) {
+    List<Map<String, dynamic>> rows, {
+    required String table,
+    required String parentKey,
+    required String valueKey,
+  }) {
     final result = <String, List<String>>{};
-    for (final row in rows) {
-      result
-          .putIfAbsent(row[parentKey] as String, () => [])
-          .add(row[valueKey] as String? ?? row['name'] as String);
+    try {
+      for (final row in rows) {
+        result
+            .putIfAbsent(row[parentKey] as String, () => [])
+            .add(row[valueKey] as String? ?? row['name'] as String);
+      }
+    } catch (error, stackTrace) {
+      _logLoadFailure('group public.$table rows', error, stackTrace);
+      rethrow;
     }
     return result;
   }

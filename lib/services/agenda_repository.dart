@@ -50,12 +50,7 @@ class AgendaRepository extends ChangeNotifier {
       final initialPracticeMinutes = prefs.getInt(practiceMinutesKey) ??
           prefs.getInt('agenda_practice_minutes_v1') ??
           0;
-      _practiceMinutes =
-          await _cloudSync!.loadPracticeMinutes(initialPracticeMinutes);
-      await prefs.setInt(practiceMinutesKey, _practiceMinutes);
-      if (prefs.containsKey('agenda_practice_minutes_v1')) {
-        await prefs.remove('agenda_practice_minutes_v1');
-      }
+      _practiceMinutes = initialPracticeMinutes;
       final storedNotes = prefs.getStringList('agenda_notes_v1');
       final localNotes = storedNotes
               ?.map((item) =>
@@ -74,10 +69,29 @@ class AgendaRepository extends ChangeNotifier {
         if (!kDebugMode && storedNotes != null) {
           await prefs.remove('agenda_notes_v1');
         }
-      } catch (error) {
+      } catch (error, stackTrace) {
+        if (kDebugMode) {
+          debugPrint(
+            '[AgendaRepository] initialize: migrating local study notes '
+            'failed; local notes were retained: $error',
+          );
+          debugPrintStack(stackTrace: stackTrace);
+        }
         migrationError = error;
       }
-      final snapshot = await _cloudSync!.load();
+      late final AgendaSnapshot snapshot;
+      try {
+        snapshot = await _cloudSync!.load();
+      } catch (error, stackTrace) {
+        if (kDebugMode) {
+          debugPrint(
+            '[AgendaRepository] initialize: loading Supabase snapshot failed: '
+            '$error',
+          );
+          debugPrintStack(stackTrace: stackTrace);
+        }
+        rethrow;
+      }
       _subjects = snapshot.subjects;
       _tasks = snapshot.tasks;
       _exams = snapshot.exams;
@@ -91,11 +105,33 @@ class AgendaRepository extends ChangeNotifier {
       _deliverables = snapshot.deliverables;
       _absences = snapshot.absences;
       _grades = snapshot.grades;
+      Object? practiceHoursError;
+      try {
+        _practiceMinutes =
+            await _cloudSync!.loadPracticeMinutes(initialPracticeMinutes);
+        await prefs.setInt(practiceMinutesKey, _practiceMinutes);
+        if (prefs.containsKey('agenda_practice_minutes_v1')) {
+          await prefs.remove('agenda_practice_minutes_v1');
+        }
+      } catch (error, stackTrace) {
+        if (kDebugMode) {
+          debugPrint(
+            '[AgendaRepository] initialize: could not load practice hours; '
+            'the local total was retained: $error',
+          );
+          debugPrintStack(stackTrace: stackTrace);
+        }
+        practiceHoursError = error;
+      }
       _initialized = true;
       _cloudUserId = user.id;
-      _syncError = migrationError == null
-          ? null
-          : 'No se pudieron migrar los apuntes locales. Se conservaron en este dispositivo. $migrationError';
+      final syncErrors = [
+        if (migrationError != null)
+          'No se pudieron migrar los apuntes locales. Se conservaron en este dispositivo. $migrationError',
+        if (practiceHoursError != null)
+          'No se pudieron cargar las horas de prácticas desde Supabase. Se conservó el total de este dispositivo. $practiceHoursError',
+      ];
+      _syncError = syncErrors.isEmpty ? null : syncErrors.join(' ');
       notifyListeners();
       return;
     }

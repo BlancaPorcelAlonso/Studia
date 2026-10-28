@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/agenda_repository.dart';
@@ -35,6 +36,10 @@ class _SupabaseGateState extends State<SupabaseGate> {
         _handleUser(state.session?.user);
       },
       onError: (Object error, StackTrace stackTrace) {
+        if (kDebugMode) {
+          debugPrint('[SupabaseGate] Authentication stream failed: $error');
+          debugPrintStack(stackTrace: stackTrace);
+        }
         if (mounted) setState(() => _loadError = error);
       },
     );
@@ -73,7 +78,11 @@ class _SupabaseGateState extends State<SupabaseGate> {
         _loadedUserId = user.id;
         _loading = false;
       });
-    } catch (error) {
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('[SupabaseGate] Failed to initialize user data: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      }
       if (!mounted || requestId != _requestId) return;
       setState(() {
         _loadError = error;
