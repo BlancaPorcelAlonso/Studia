@@ -840,15 +840,21 @@ class SupabaseAgendaSync {
       );
     }
     final row = rows.single;
-    if (row['user_id'] != userId ||
-        !_sameNoteContent(row, note) ||
-        row['title'] != note.title ||
-        row['topic'] != note.topic ||
-        row['category'] != note.category ||
-        row['subject_id'] != note.subjectId) {
-      // Verify persisted content and ownership, not exact timestamp equality.
-      // PostgreSQL/Dart may encode timestamps at different precision or zones.
-      throw StateError('No se pudo verificar el apunte "${note.title}".');
+    // Name mismatched fields without logging personal note content.
+    final mismatchedFields = <String>[
+      if (row['user_id'] != userId) 'user_id',
+      if (row['subject_id'] != note.subjectId) 'subject_id',
+      if (row['title'] != note.title) 'title',
+      if (row['topic'] != note.topic) 'topic',
+      if (row['category'] != note.category) 'category',
+      if (row['content'] != note.content) 'content',
+    ];
+    if (mismatchedFields.isNotEmpty) {
+      throw StateError(
+        'No se pudo verificar el apunte "${note.title}". '
+        'Campos distintos en Supabase: ${mismatchedFields.join(', ')}. '
+        'No se ha eliminado el contenido local.',
+      );
     }
 
     final checkRows = await client
