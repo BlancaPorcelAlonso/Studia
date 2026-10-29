@@ -844,7 +844,10 @@ class SupabaseAgendaSync {
         !_sameNoteContent(row, note) ||
         row['title'] != note.title ||
         row['topic'] != note.topic ||
-        _date(row['updated_at']) != note.updatedAt) {
+        row['category'] != note.category ||
+        row['subject_id'] != note.subjectId) {
+      // Verify persisted content and ownership, not exact timestamp equality.
+      // PostgreSQL/Dart may encode timestamps at different precision or zones.
       throw StateError('No se pudo verificar el apunte "${note.title}".');
     }
 
