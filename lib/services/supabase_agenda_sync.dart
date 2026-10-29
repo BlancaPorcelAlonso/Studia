@@ -453,133 +453,64 @@ class SupabaseAgendaSync {
       }
     }
 
+    // Migration must be non-destructive: never update an existing cloud note.
+    // Postgres timestamps may have a different precision than local timestamps,
+    // so comparing them with exact equality can cause repeated false conflicts.
     final rows = await _rows('study_notes');
     final rowsById = {for (final row in rows) row['id'] as String: row};
-    noteLoop:
     for (final sourceNote in localNotes) {
       final localNote = sourceNote.copyWith(
         subjectId: subjectIdMap[sourceNote.subjectId] ?? sourceNote.subjectId,
       );
-      var destination = localNote;
       final existing = rowsById[localNote.id];
-      DateTime? expectedUpdatedAt;
-      var insertOnly = existing == null;
-      if (existing != null) {
-        final cloudUpdatedAt = _date(existing['updated_at']);
-        if (_sameNoteContent(existing, localNote)) {
-          if (localNote.updatedAt.isAfter(cloudUpdatedAt)) {
-            expectedUpdatedAt = cloudUpdatedAt;
-            insertOnly = false;
-          } else if (localNote.updatedAt.isBefore(cloudUpdatedAt) ||
-              await _matchesNote(localNote)) {
-            continue noteLoop;
-          } else {
-            expectedUpdatedAt = cloudUpdatedAt;
-            insertOnly = false;
-          }
-        } else if (localNote.updatedAt.isAfter(cloudUpdatedAt)) {
-          expectedUpdatedAt = cloudUpdatedAt;
-          insertOnly = false;
-        } else {
-          var suffix = 1;
-          while (true) {
-            final candidateId =
-                '${localNote.id}_local_migration_${userId}_$suffix';
-            final candidate = rowsById[candidateId];
-            if (candidate == null) {
-              destination = localNote.copyWith(id: candidateId);
-              insertOnly = true;
-              break;
-            }
-            if (_sameNoteContent(candidate, localNote)) {
-              final candidateUpdatedAt = _date(candidate['updated_at']);
-              if (candidateUpdatedAt.isAfter(localNote.updatedAt) ||
-                  (candidateUpdatedAt == localNote.updatedAt &&
-                      await _matchesNote(
-                        localNote.copyWith(id: candidateId),
-                      ))) {
-                continue noteLoop;
-              }
-              destination = localNote.copyWith(
-                id: candidateId,
-                updatedAt: candidateUpdatedAt,
-              );
-              expectedUpdatedAt = candidateUpdatedAt;
-              insertOnly = false;
-              break;
-            }
-            suffix++;
-          }
-        }
+      if (existing != null &&
+          _sameNoteContent(existing, localNote) &&
+          await _matchesNote(localNote)) {
+        continue;
       }
 
-      try {
-        await saveNote(
-          destination,
-          expectedUpdatedAt: expectedUpdatedAt,
-          insertOnly: insertOnly,
-        );
-      } catch (error) {
-        // During migration an optimistic-lock conflict must not block startup.
-        // Preserve the local version as a separate note instead of overwriting
-        // the version already stored on another device.
-        if (expectedUpdatedAt != null &&
-            error is StateError &&
-            error.message.toString().contains('cambió en otro dispositivo')) {
-          var suffix = 1;
-          while (true) {
-            final backupId =
-                '${localNote.id}_local_migration_${userId}_conflict_$suffix';
-            try {
-              destination = localNote.copyWith(id: backupId);
-              await saveNote(destination, insertOnly: true);
-              break;
-            } catch (backupError) {
-              if (!_isDuplicateKey(backupError)) rethrow;
-              suffix++;
-            }
-          }
-        } else {
-          if (!_isDuplicateKey(error) || expectedUpdatedAt != null) rethrow;
-          var suffix = 0;
-          while (true) {
-            final candidateId =
-                '${localNote.id}_local_migration_$userId${suffix == 0 ? '' : '_$suffix'}';
-            final candidate = rowsById[candidateId];
-            if (candidate != null && _sameNoteContent(candidate, localNote)) {
-              destination = localNote.copyWith(
-                id: candidateId,
-                updatedAt: _date(candidate['updated_at']),
-              );
-              expectedUpdatedAt = _date(candidate['updated_at']);
-              await saveNote(
-                destination,
-                expectedUpdatedAt: expectedUpdatedAt,
-              );
-              break;
-            }
-            if (candidate == null) {
-              destination = localNote.copyWith(id: candidateId);
-              try {
-                await saveNote(destination, insertOnly: true);
-                break;
-              } catch (candidateError) {
-                if (!_isDuplicateKey(candidateError)) rethrow;
-              }
-            }
-            suffix++;
-          }
+      // Reuse an existing migration copy when it already matches, so a
+      // repeated login does not create another duplicate each time.
+      final prefix = '${localNote.id}_local_migration_${userId}_';
+      var alreadyMigrated = false;
+      for (final row in rows) {
+        final rowId = row['id'] as String;
+        if (rowId.startsWith(prefix) &&
+            _sameNoteContent(row, localNote) &&
+            await _matchesNote(localNote.copyWith(id: rowId))) {
+          alreadyMigrated = true;
+          break;
         }
       }
-      rowsById[destination.id] = {
-        'id': destination.id,
-        'subject_id': destination.subjectId,
-        'title': destination.title,
-        'topic': destination.topic,
-        'category': destination.category,
-        'content': destination.content,
-        'updated_at': destination.updatedAt.toIso8601String(),
-      };
+      if (alreadyMigrated) continue;
+
+      var suffix = 1;
+      while (true) {
+        final candidateId = existing == null && suffix == 1
+            ? localNote.id
+            : '${prefix}$suffix';
+        if (rowsById.containsKey(candidateId)) {
+          suffix++;
+          continue;
+        }
+        final candidate = localNote.copyWith(id: candidateId);
+        try {
+          await saveNote(candidate, insertOnly: true);
+          rowsById[candidateId] = {
+            'id': candidateId,
+            'subject_id': candidate.subjectId,
+            'title': candidate.title,
+            'topic': candidate.topic,
+            'category': candidate.category,
+            'content': candidate.content,
+            'updated_at': candidate.updatedAt.toIso8601String(),
+          };
+          break;
+        } catch (error) {
+          if (!_isDuplicateKey(error)) rethrow;
+          suffix++;
+        }
+      }
     }
   }
 
